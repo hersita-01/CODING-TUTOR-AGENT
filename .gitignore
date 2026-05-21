@@ -1,11 +1,14 @@
+# Environment variables and secrets
+.env
+
 # Virtual environment
 tutor-env/
 
-# Python cache
+# Python cache and compiled files
 __pycache__/
-
-# Environment variables
-.env
+*.pyc
+*.pyo
+*.pyd
 
 # VS Code settings
 .vscode/
@@ -13,8 +16,5 @@ __pycache__/
 # Jupyter notebook checkpoints
 .ipynb_checkpoints/
 
-# Python compiled files
-*.pyc
-
-# macOS system files
+# System files
 .DS_Store
