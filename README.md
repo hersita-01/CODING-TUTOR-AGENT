@@ -79,32 +79,26 @@ Skills gained:
 
 ---
 
-## Day 4 — First LLM API Calls
+## Day 4 — First LLM API Calls & Parameter Tuning
 
 Learned:
-- Working with Gemini API
-- Using environment variables securely
-- Loading API keys using `.env`
-- Sending prompts to AI models
-- Receiving AI-generated responses
-- Error handling for API requests
+- Working with LLM APIs via the OpenAI Python client library
+- Routing requests to the **Groq API Cloud platform** using ultra-fast open-source models
+- Using environment variables securely to load system API keys via `.env`
+- Understanding core LLM configuration settings: **Temperature** and **Max Tokens**
+- Network exception handling for API infrastructure endpoints
 
 Implemented:
-- Gemini 2.5 Flash integration
-- Secure API key handling
-- AI prompt-response workflow
-- Exception handling using `try-except`
+- `groq_test.py`: Initial setup verification for Groq's high-speed inference cloud using `llama-3.1-8b-instant`.
+- `first_llm.py`: A clean implementation verifying secure key capture and basic structural prompt execution.
+- `temperature_test.py`: A comparison script executing identical prompts at opposite configuration values (`0.0` vs `1.0`) to witness deterministic precision versus creative word distribution.
+- `tokens_test.py`: A text constraint pipeline using `max_tokens` to cap generational budget and analyzing `finish_reason` output properties.
 
 Skills gained:
-- Basic AI application development
-- Understanding prompt engineering
-- API communication workflow
-- Secure credential management
-
-Example features:
-- Prompting Gemini for coding advice
-- Generating AI responses from Python
-- Handling API failures gracefully
+- Dynamic AI multi-platform application design
+- Configuration management using token budget boundaries
+- API architecture tracking and diagnostics
+- Secure credential protection via strict `.gitignore` patterns
 
 ---
 
@@ -122,39 +116,13 @@ coding-tutor-agent/
 │   └── notes.txt
 │
 ├── day4-llm-api/
+│   ├── .env
+│   ├── .env.example
 │   ├── first_llm.py
-│   └── .env
+│   ├── groq_test.py
+│   ├── temperature_test.py
+│   └── tokens_test.py
 │
 ├── tutor-env/
 ├── README.md
 └── .gitignore
-```
-
----
-
-# Technologies Used
-
-- Python
-- Git & GitHub
-- Google Gemini API
-- python-dotenv
-- VS Code
-- Ubuntu Linux
-
----
-
-# GitHub Repository
-
-Repository Link:
-https://github.com/hersita-01/CODING-TUTOR-AGENT
-
----
-
-# Goal
-
-Build an AI Coding Tutor Agent that:
-- Diagnoses beginner Python bugs
-- Guides learners using Socratic questioning
-- Uses AI tools and memory systems
-- Helps users learn instead of spoon-feeding answers
-- Integrates LLMs for interactive tutoring
