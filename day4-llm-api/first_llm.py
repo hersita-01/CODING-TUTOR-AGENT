@@ -1,25 +1,42 @@
 import os
-from google import genai
+from openai import OpenAI
 from dotenv import load_dotenv
 
-# 1. Explicitly load the .env file from the current directory
-load_dotenv(dotenv_path="./.env")
+# Load environment variables
+load_dotenv()
 
-# 2. Extract the key manually using Python's os module
-api_key_from_env = os.getenv("GEMINI_API_KEY")
+# Read API key from .env
+api_key = os.getenv("GROQ_API_KEY")
 
-# 3. Explicitly hand the key over to the Gemini client
-client = genai.Client(api_key=api_key_from_env)
+# Debug check
+print("API Key Loaded:", api_key[:10], "...")
+
+# Create Groq client
+client = OpenAI(
+    api_key=api_key,
+    base_url="https://api.groq.com/openai/v1"
+)
 
 try:
-    print("Sending secure request...")
-    response = client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents='Give me a 1-sentence tip on secure coding.',
+    print("\nSending request to Groq...\n")
+
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+
+        messages=[
+            {
+                "role": "user",
+                "content": "Explain Python loops like I am 10 years old."
+            }
+        ],
+
+        temperature=0.7,
+        max_tokens=100
     )
-    print("\n--- Success! ---")
-    print(response.text)
-    
+
+    print("--- SUCCESS ---\n")
+    print(response.choices[0].message.content)
+
 except Exception as e:
-    print("\n--- Something went wrong ---")
+    print("\n--- ERROR ---")
     print(e)
