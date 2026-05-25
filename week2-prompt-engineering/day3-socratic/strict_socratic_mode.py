@@ -44,13 +44,14 @@ error_type = result.error_type
 error_message = result.error_message
 
 system_prompt = """
-You are a generalized Python tutor.
+You are a strict Socratic Python tutor.
 
 Rules:
-- Briefly explain your diagnostic reasoning without revealing hidden chain-of-thought
-- Then ask one Socratic question
-- Never directly fix the code
-- Support all Python error types
+- ONLY ask questions
+- Never explain directly
+- Never provide fixes
+- Encourage independent reasoning
+- Adapt to all Python errors
 """
 
 user_prompt = f"""
@@ -60,10 +61,7 @@ Code:
 Error:
 {error_type}: {error_message}
 
-Tasks:
-1. Give a concise diagnosis
-2. Explain why the error happened
-3. Ask one Socratic hint
+Ask only ONE Socratic debugging question.
 """
 
 response = client.chat.completions.create(
@@ -72,9 +70,9 @@ response = client.chat.completions.create(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt}
     ],
-    temperature=0.2,
-    max_tokens=220
+    temperature=0.1,
+    max_tokens=80
 )
 
-print("\nDIAGNOSTIC SOCRATIC RESPONSE:\n")
+print("\nSTRICT SOCRATIC RESPONSE:\n")
 print(response.choices[0].message.content)

@@ -1,6 +1,8 @@
 import os
-import signal
+import subprocess
 import sys
+import tempfile
+from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -11,7 +13,7 @@ load_dotenv()
 api_key = os.getenv("GROQ_API_KEY")
 
 if not api_key:
-    print("❌ ERROR: GROQ_API_KEY not found in .env file.")
+    print("ERROR: GROQ_API_KEY not found in .env file.")
     sys.exit(1)
 
 client = OpenAI(
@@ -19,23 +21,14 @@ client = OpenAI(
     base_url="https://api.groq.com/openai/v1"
 )
 
-# Operational security blocks to safe-keep your hosting platform hardware
-blocked_keywords = [
-    "os.remove", "os.rmdir", "os.system", "shutil", 
-    "subprocess", "sys.exit", "open", "eval("
-]
-
-def timeout_handler(signum, frame):
-    raise TimeoutError("Code execution exceeded the safety limits (3-second timeout).")
-
 # -----------------------------------
 # GET STUDENT CODE VIA CONSECUTIVE DOUBLE ENTER
 # -----------------------------------
 print("\n======================================================================")
-print("🐍 Socratic Python Tutor Sandbox Engine (Consecutive Double Enter)")
+print("Socratic Python Tutor Sandbox Engine (Consecutive Double Enter)")
 print("======================================================================")
 print("Paste your Python code below.")
-print("👉 Press ENTER twice consecutively on a blank line to execute.\n")
+print("Press ENTER twice consecutively on a blank line to execute.\n")
 
 lines = []
 blank_count = 0
@@ -60,17 +53,7 @@ student_code = "\n".join(lines)
 
 # Check Empty Input
 if not student_code.strip():
-    print("\n❌ ERROR: No code entered. Aborting session.")
-    sys.exit(1)
-
-# Security Keyword Screening
-for keyword in blocked_keywords:
-    if keyword in student_code:
-        print(f"\n⚠️ Security Block: Unsupported system keyword detected ('{keyword}').")
-        sys.exit(1)
-
-if "input(" in student_code:
-    print("\n⚠️ Input Constraint: Interactive input() workflows are not supported yet.")
+    print("\nERROR: No code entered. Aborting session.")
     sys.exit(1)
 
 # -----------------------------------
@@ -80,53 +63,49 @@ error_type = ""
 error_message = ""
 line_number = "Unknown"
 
-try:
-    print("\n🔨 Compiling and evaluating your code structures...")
-    
-    # 1. Catch structural compilation errors (SyntaxError, IndentationError)
-    compiled_code = compile(student_code, "<string>", "exec")
+print("\nCompiling and evaluating your code structures...")
 
-    # 2. Arm the hardware execution safety timer (3 seconds max runtime)
-    signal.signal(signal.SIGALRM, timeout_handler)
-    signal.alarm(3)
+with tempfile.TemporaryDirectory() as temp_dir:
+    script_path = Path(temp_dir) / "student_code.py"
+    script_path.write_text(student_code, encoding="utf-8")
 
-    # 3. Execute inside an isolated scope map
-    local_scope = {}
-    exec(compiled_code, {}, local_scope)
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(script_path)],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            cwd=temp_dir,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        completed = None
+        error_type = "TimeoutError"
+        error_message = "Code ran for more than 3 seconds."
 
-    # 4. Disarm the timer safely if code completes
-    signal.alarm(0)
-
-    print("\n✅ Execution Success: No errors found during tracking analysis.")
+if completed is not None and completed.returncode == 0:
+    print("\nExecution Success: No errors found during tracking analysis.")
     print("Keep in mind, hidden logical or structural bugs might still exist!")
     sys.exit(0)
 
-except (SyntaxError, IndentationError) as se:
-    # Catch syntax/tab tracking blocks before execution starts
-    signal.alarm(0)
-    error_type = type(se).__name__
-    error_message = se.msg
-    line_number = se.lineno
+if completed is not None:
+    traceback_text = (completed.stdout + completed.stderr).strip()
+    final_line = traceback_text.splitlines()[-1] if traceback_text else ""
+    if ": " in final_line:
+        error_type, error_message = final_line.split(": ", 1)
+    else:
+        error_type = "RuntimeError"
+        error_message = final_line or "Python exited with an error."
 
-except Exception as e:
-    # Catch active runtime faults (NameError, TypeError, IndexError, etc.)
-    signal.alarm(0)
-    error_type = type(e).__name__
-    error_message = str(e)
-    
-    # Climb down the traceback framework stack mapping to find the user's line fault
-    exc_type, exc_obj, exc_tb = sys.exc_info()
-    if exc_tb is not None:
-        tb = exc_tb
-        while tb.tb_next:
-            tb = tb.tb_next
-        line_number = tb.tb_lineno
+    for line in traceback_text.splitlines():
+        if "student_code.py" in line and "line" in line:
+            line_number = line.split("line", 1)[1].split(",", 1)[0].strip()
 
 # -----------------------------------
 # DISPLAY LOCAL DIAGNOSTIC RESULTS
 # -----------------------------------
 print("\n--------------------------------------------------")
-print("🚨 INTERCEPTED CODE FAULT STATUS")
+print("INTERCEPTED CODE FAULT STATUS")
 print("--------------------------------------------------")
 print(f"Exception Class : {error_type}")
 print(f"Fault Details   : {error_message}")
@@ -137,6 +116,20 @@ print(f"Target Line     : Line {line_number}")
 # -----------------------------------
 system_prompt = """You are a supportive, insightful Python tutor focused on the Socratic method.
 Your goal is to help students learn how to debug by guiding their thought process, not by giving away the solution.
+
+Few-shot examples:
+
+Good example 1:
+Error: NameError: name 'total' is not defined
+Response: NameError means Python looked for a variable name it has not seen yet. Before the line that uses total, where should that variable first be created?
+
+Good example 2:
+Error: IndexError: list index out of range
+Response: IndexError means the code asked for a list position that does not exist. How many items are in your list, and what is the largest valid index?
+
+Bad example:
+Response: Change line 3 to total = 0 and your code will work.
+Why bad: It gives away the fix instead of teaching the learner how to reason.
 
 Follow these strict operational constraints:
 1. Briefly summarize the error class in warm, beginner-friendly terms (e.g., "NameError means Python looked for a name it doesn't recognize").
@@ -162,7 +155,7 @@ Tasks:
 # DELIVER DATA TO GROQ INFERENCE WEB
 # -----------------------------------
 try:
-    print("\n🤖 Consulting Socratic Agent for review...\n")
+    print("\nConsulting Socratic Agent for review...\n")
 
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
@@ -175,11 +168,11 @@ try:
     )
 
     print("----------------------------------------------------------------------")
-    print("💡 AI SOCRATIC TUTOR RESPONSE")
+    print("AI SOCRATIC TUTOR RESPONSE")
     print("----------------------------------------------------------------------\n")
     print(response.choices[0].message.content)
     print("\n======================================================================")
 
 except Exception as api_err:
-    print("\n❌ API Communication Error encountered during generation:")
+    print("\nAPI Communication Error encountered during generation:")
     print(api_err)

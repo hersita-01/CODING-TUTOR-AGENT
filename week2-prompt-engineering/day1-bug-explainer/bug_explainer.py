@@ -10,6 +10,7 @@
 # -----------------------------------
 
 import os
+import sys
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -20,6 +21,10 @@ from openai import OpenAI
 load_dotenv()
 
 api_key = os.getenv("GROQ_API_KEY")
+
+if not api_key:
+    print("ERROR: GROQ_API_KEY is missing from your .env file.")
+    sys.exit(1)
 
 # -----------------------------------
 # CREATE GROQ CLIENT
@@ -40,6 +45,10 @@ print("\nPaste your code below:")
 student_code = input()
 
 error_message = input("\nEnter the error message: ")
+
+if not language.strip() or not student_code.strip() or not error_message.strip():
+    print("ERROR: Language, code, and error message are all required.")
+    sys.exit(1)
 
 # -----------------------------------
 # SYSTEM PROMPT
