@@ -1,4 +1,5 @@
 import os
+import sys
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -13,6 +14,7 @@ if api_key:
     print("Loaded API Key: Found and secured.")
 else:
     print("API Key Missing! Check your .env file.")
+    sys.exit(1)
 
 # Create Groq client
 client = OpenAI(

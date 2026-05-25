@@ -1,10 +1,15 @@
 # tokens_test.py
 import os
+import sys
 from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path="./.env")
 api_key = os.getenv("GROQ_API_KEY")
+
+if not api_key:
+    print("ERROR: GROQ_API_KEY is missing from your .env file.")
+    sys.exit(1)
 
 client = OpenAI(
     api_key=api_key,

@@ -1,5 +1,7 @@
- Environment variables and secrets
+# Environment variables and secrets
 .env
+.env.*
+*.env
 
 # Virtual environment
 tutor-env/
@@ -17,4 +19,4 @@ __pycache__/
 .ipynb_checkpoints/
 
 # System files
-.DS_Store#
+.DS_Store

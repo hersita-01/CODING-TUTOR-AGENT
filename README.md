@@ -134,28 +134,95 @@ Skills gained:
 
 ---
 
+# Week 2 Progress
+
+## Day 1 — Bug Explainer
+
+Built:
+- `bug_explainer.py`
+- A system/user prompt flow that explains beginner programming errors without immediately giving corrected code
+
+Skills gained:
+- Separating system prompts from user prompts
+- Writing beginner-friendly debugging instructions
+- Asking one guiding question at the end of an explanation
+
+## Day 2 — Few-Shot Socratic Hints
+
+Built:
+- `few_shot_bug_explainer.py`
+- Few-shot examples showing good Socratic hints and one bad answer-revealing hint
+
+Skills gained:
+- Using examples to shape model behavior
+- Running student code in a subprocess with a timeout
+- Capturing runtime errors for tutor feedback
+
+## Day 3 — Socratic Tutor Variants
+
+Built:
+- `friendly_tutor.py`
+- `socratic_hint_generator.py`
+- `chain_of_thought_tutor.py`
+- `strict_socratic_mode.py`
+- `safe_python_runner.py`
+
+Skills gained:
+- Comparing friendly, guided, and strict Socratic tutor behavior
+- Avoiding direct fixes
+- Asking targeted debugging questions
+
+## Day 4 — Structured Outputs
+
+Built:
+- `structured_tutor_response.py`
+- JSON tutor response format with `diagnosis`, `hint`, `follow_up_question`, and `confidence`
+
+Skills gained:
+- Producing structured model output for future UI integration
+- Parsing and validating JSON responses
+
+## Day 5 — Streaming, Cost, and Model Choice
+
+Built:
+- `streaming_tutor.py`
+- Notes on model size, latency, token limits, and cost-control habits
+
+Skills gained:
+- Streaming model responses
+- Capping `max_tokens`
+- Logging model and latency basics
+
+---
+
 # Current Project Structure
 
 ```text
 coding-tutor-agent/
 │
-├── day2-python-basics/
-│   ├── basics.py
-│   └── student.py
+├── week1-foundations/
+│   ├── day2-python-basics/
+│   │   ├── basics.py
+│   │   └── student.py
+│   ├── day3-functions-debugging/
+│   │   ├── functions.py
+│   │   └── notes.txt
+│   ├── day4-llm-api/
+│   │   ├── first_llm.py
+│   │   ├── groq_test.py
+│   │   ├── temperature_test.py
+│   │   └── tokens_test.py
+│   └── day5-prompt-engineering/
+│       ├── tutor_prompt.py
+│       └── notes.txt
 │
-├── day3-functions-debugging/
-│   ├── functions.py
-│   └── notes.txt
-│
-├── day4-llm-api/
-│   ├── first_llm.py
-│   ├── groq_test.py
-│   ├── temperature_test.py
-│   └── tokens_test.py
-│
-├── day5-prompt-engineering/
-│   ├── tutor_prompt.py
-│   └── notes.txt
+├── week2-prompt-engineering/
+│   ├── prompt_library.md
+│   ├── day1-bug-explainer/
+│   ├── day2-few-shot/
+│   ├── day3-socratic/
+│   ├── day4-structured-output/
+│   └── day5-streaming-cost/
 │
 ├── tutor-env/
 ├── README.md

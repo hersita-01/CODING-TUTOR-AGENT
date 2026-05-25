@@ -1,4 +1,5 @@
 import os
+import sys
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -8,8 +9,9 @@ load_dotenv()
 # Read API key from .env
 api_key = os.getenv("GROQ_API_KEY")
 
-# Debug check
-print("API Key Loaded:", api_key[:10], "...")
+if not api_key:
+    print("ERROR: GROQ_API_KEY is missing from your .env file.")
+    sys.exit(1)
 
 # Create Groq client
 client = OpenAI(

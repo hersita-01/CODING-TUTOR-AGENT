@@ -16,7 +16,7 @@ if not api_key:
 # 3. Initialize the client to target the GROQ platform instead of xAI
 client = OpenAI(
     api_key=api_key,
-    base_url="https://api.groq.com/openai/v1"  # Correct path for gsk_ keys
+    base_url="https://api.groq.com/openai/v1"
 )
 
 prompt = "Write a one-sentence tagline for a coffee brand made for programmers."
