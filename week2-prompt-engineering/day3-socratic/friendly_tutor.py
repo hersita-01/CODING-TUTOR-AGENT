@@ -1,45 +1,70 @@
 import os
-import sys
-
 from dotenv import load_dotenv
 from openai import OpenAI
 
 load_dotenv()
 
-api_key = os.getenv("GROQ_API_KEY")
-if not api_key:
-    print("ERROR: GROQ_API_KEY is missing from your .env file.")
-    sys.exit(1)
-
 client = OpenAI(
-    api_key=api_key,
-    base_url="https://api.groq.com/openai/v1",
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url="https://api.groq.com/openai/v1"
 )
 
-question = input("What Python concept should the tutor explain? ").strip()
-if not question:
-    print("ERROR: Please enter a Python concept or question.")
-    sys.exit(1)
+print("Paste Python code. Type END to finish.\n")
+
+lines = []
+
+while True:
+
+    line = input()
+
+    if line.strip() == "END":
+        break
+
+    lines.append(line)
+
+student_code = "\n".join(lines)
+
+try:
+
+    compile(student_code, "<string>", "exec")
+    exec(student_code)
+
+    print("No runtime errors detected.")
+    exit()
+
+except Exception as e:
+
+    error_type = type(e).__name__
+    error_message = str(e)
 
 system_prompt = """
-You are a friendly Python tutor for beginners.
+You are a supportive and encouraging Python tutor.
 
 Rules:
-- Explain in simple language
-- Use one tiny example
-- Avoid advanced jargon
-- End with one check-your-understanding question
+- Help students feel comfortable
+- Normalize mistakes
+- Use beginner-friendly language
+- Ask one guiding question
+- Adapt to all Python errors
+"""
+
+user_prompt = f"""
+Code:
+{student_code}
+
+Error:
+{error_type}: {error_message}
+
+Explain kindly and ask one supportive Socratic question.
 """
 
 response = client.chat.completions.create(
     model="llama-3.1-8b-instant",
     messages=[
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": question},
-    ],
-    temperature=0.4,
-    max_tokens=220,
+        {"role": "user", "content": user_prompt}
+    ]
 )
 
-print("\nFRIENDLY TUTOR RESPONSE:\n")
+print("\nFRIENDLY RESPONSE:\n")
 print(response.choices[0].message.content)
