@@ -1,59 +1,90 @@
+
+# -----------------------------------
+# Enter programming language:
+#python
+#Paste your code below:
+#age = "20"
+#print(age + 5)
+#Enter the error message:
+#TypeError: can only concatenate str (not "int") to str
+# -----------------------------------
+
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
-# Load environment variables
+# -----------------------------------
+# LOAD ENV VARIABLES
+# -----------------------------------
+
 load_dotenv()
 
-# Read Groq API key
 api_key = os.getenv("GROQ_API_KEY")
 
-# Create Groq client
+# -----------------------------------
+# CREATE GROQ CLIENT
+# -----------------------------------
+
 client = OpenAI(
     api_key=api_key,
     base_url="https://api.groq.com/openai/v1"
 )
 
-# Example buggy code
-buggy_code = """
-numbers = [1, 2, 3]
-print(numbers[5])
-"""
+# -----------------------------------
+# USER INPUT
+# -----------------------------------
 
-# Example error message
-error_message = "IndexError: list index out of range"
+language = input("Enter programming language: ")
 
-# System prompt
-system_prompt = """
-You are a beginner-friendly Python coding tutor.
+print("\nPaste your code below:")
+student_code = input()
 
-Your job is to explain Python errors in simple English.
+error_message = input("\nEnter the error message: ")
+
+# -----------------------------------
+# SYSTEM PROMPT
+# -----------------------------------
+
+system_prompt = f"""
+You are a patient and beginner-friendly {language} programming tutor.
+
+Your task is to explain programming errors clearly for beginners.
 
 Rules:
-- Be calm, supportive, and encouraging
-- Avoid difficult technical jargon
-- Explain what Python is complaining about
-- Explain why the error happened conceptually
-- Never directly provide the corrected code
-- Keep explanations short and beginner-friendly
-- Encourage the student to think independently
+- Be calm and encouraging
+- Avoid difficult jargon
+- Explain what the error means
+- Explain why the error happened
+- Never directly provide the final corrected code
+- Keep explanations beginner-friendly
 - End with one guiding question
 - Remind the student that debugging is a normal part of programming
 """
 
-# User prompt
-user_prompt = f"""
-Code:
-{buggy_code}
+# -----------------------------------
+# USER PROMPT
+# -----------------------------------
 
-Error:
+user_prompt = f"""
+Programming Language:
+{language}
+
+Student Code:
+{student_code}
+
+Error Message:
 {error_message}
 
-Explain this error simply for a beginner.
+Explain this error simply for a beginner programmer.
 """
 
+# -----------------------------------
+# API CALL
+# -----------------------------------
+
 try:
-    print("Sending Bug Explainer request to Groq...\n")
+
+    print("\nAnalyzing error with AI tutor...\n")
 
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
@@ -62,12 +93,14 @@ try:
             {"role": "user", "content": user_prompt}
         ],
         temperature=0.3,
-        max_tokens=150
+        max_tokens=250
     )
 
-    print("--- AI Bug Explanation ---\n")
+    print("----- AI Tutor Explanation -----\n")
+
     print(response.choices[0].message.content)
 
 except Exception as e:
-    print("\n--- ERROR ---")
+
+    print("\n----- ERROR -----")
     print(e)
