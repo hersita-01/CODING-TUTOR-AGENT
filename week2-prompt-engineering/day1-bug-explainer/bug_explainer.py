@@ -1,16 +1,6 @@
-
-# -----------------------------------
-# Enter programming language:
-#python
-#Paste your code below:
-#age = "20"
-#print(age + 5)
-#Enter the error message:
-#TypeError: can only concatenate str (not "int") to str
-# -----------------------------------
-
 import os
 import sys
+import traceback
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -41,14 +31,45 @@ client = OpenAI(
 
 language = input("Enter programming language: ")
 
-print("\nPaste your code below:")
-student_code = input()
+print("\nPaste your code below.")
+print("Press ENTER twice when finished.\n")
 
-error_message = input("\nEnter the error message: ")
+lines = []
 
-if not language.strip() or not student_code.strip() or not error_message.strip():
-    print("ERROR: Language, code, and error message are all required.")
+while True:
+
+    line = input()
+
+    if line == "":
+        break
+
+    lines.append(line)
+
+student_code = "\n".join(lines)
+
+if not language.strip() or not student_code.strip():
+    print("ERROR: Language and code are required.")
     sys.exit(1)
+
+# -----------------------------------
+# AUTOMATIC ERROR DETECTION
+# -----------------------------------
+
+error_type = None
+error_message = None
+
+try:
+
+    compile(student_code, "<string>", "exec")
+    exec(student_code)
+
+    print("\n✅ No runtime errors detected.")
+    sys.exit(0)
+
+except Exception as e:
+
+    error_type = type(e).__name__
+    error_message = str(e)
 
 # -----------------------------------
 # SYSTEM PROMPT
@@ -64,10 +85,10 @@ Rules:
 - Avoid difficult jargon
 - Explain what the error means
 - Explain why the error happened
-- Never directly provide the final corrected code
-- Keep explanations beginner-friendly
-- End with one guiding question
-- Remind the student that debugging is a normal part of programming
+- Never directly provide the corrected code
+- Keep explanations short and beginner-friendly
+- End with ONE guiding question
+- Encourage independent thinking
 """
 
 # -----------------------------------
@@ -81,8 +102,8 @@ Programming Language:
 Student Code:
 {student_code}
 
-Error Message:
-{error_message}
+Detected Error:
+{error_type}: {error_message}
 
 Explain this error simply for a beginner programmer.
 """
@@ -93,23 +114,39 @@ Explain this error simply for a beginner programmer.
 
 try:
 
-    print("\nAnalyzing error with AI tutor...\n")
+    print("\n-----------------------------------")
+    print("DETECTED ERROR")
+    print("-----------------------------------")
+    print(f"Error Type    : {error_type}")
+    print(f"Error Message : {error_message}")
+
+    print("\nAnalyzing with AI Tutor...\n")
 
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {
+                "role": "system",
+                "content": system_prompt
+            },
+            {
+                "role": "user",
+                "content": user_prompt
+            }
         ],
         temperature=0.3,
         max_tokens=250
     )
 
-    print("----- AI Tutor Explanation -----\n")
+    print("-----------------------------------")
+    print("AI TUTOR RESPONSE")
+    print("-----------------------------------\n")
 
     print(response.choices[0].message.content)
 
 except Exception as e:
 
-    print("\n----- ERROR -----")
+    print("\n-----------------------------------")
+    print("SYSTEM ERROR")
+    print("-----------------------------------")
     print(e)
