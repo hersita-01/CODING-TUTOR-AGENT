@@ -195,6 +195,60 @@ Skills gained:
 
 ---
 
+# Week 3 Progress
+
+## Day 1 — Introduction to Tool Use
+
+Learned:
+- What AI tool/function calling means
+- How LLMs use Python functions as tools
+- Tool loop architecture
+- Safe execution concepts
+- Timeout protection
+
+Built:
+- `day1_tool_concepts.py`
+
+Skills gained:
+- Understanding AI tool workflows
+- Simulating tool execution
+- Connecting Python functions with AI systems
+
+---
+
+## Day 2 — Tool Schema Design
+
+Learned:
+- JSON tool schemas
+- Function metadata design
+- Parameter validation
+- Structured tool definitions
+
+Built:
+- `day2_tool_schema.py`
+
+Skills gained:
+- Designing AI-compatible tools
+- Creating structured schemas
+- Understanding OpenAI-style function calling
+
+Example Tool Schema:
+
+```python
+run_python_tool = {
+    "type": "function",
+    "function": {
+        "name": "run_python",
+        "description": "Execute Python code safely",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string"}
+            }
+        }
+    }
+}
+
 # Current Project Structure
 
 ```text
@@ -223,6 +277,11 @@ coding-tutor-agent/
 │   ├── day3-socratic/
 │   ├── day4-structured-output/
 │   └── day5-streaming-cost/
+|
+├── week3-tool-use/
+│   ├── day1_tool_concepts.py
+│   ├── day2_tool_schema.py
+│   └── notes.txt
 │
 ├── tutor-env/
 ├── README.md
@@ -238,3 +297,14 @@ coding-tutor-agent/
 - Teach through guided questioning
 - Explore AI agents and prompt engineering
 - Learn modern AI application development
+
+# Features
+
+- AI-powered Python tutoring
+- Beginner-friendly debugging support
+- Socratic questioning approach
+- Safe Python code execution
+- Structured AI responses
+- Streaming tutor responses
+- Tool-based AI workflows
+- Timeout protection for infinite loops
