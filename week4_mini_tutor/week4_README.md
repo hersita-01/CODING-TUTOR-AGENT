@@ -1,146 +1,201 @@
-# Week 4 — Mini-Tutor v1
+# Mini-Tutor v1 — AI Coding Tutor Agent
 
-Mini-Tutor v1 is a complete AI-powered coding tutor application.
-
-It combines:
-- AI agents
-- tool calling
-- safe code execution
-- Streamlit frontend
-- guided debugging
-
-into one working system.
+**Week 4 deliverable** · AI Agents Internship · Coding Tutor Track
 
 ---
 
-# Features
+## Problem Statement
 
-- Safe Python execution
-- Ruff linting
-- Python documentation search
-- Streamlit chat interface
-- Tool-calling ReAct agent
-- Socratic tutoring
-- Conversation memory
-- Runtime error analysis
+Beginner programmers often get stuck on bugs but learn nothing when they're just handed the fixed code. Mini-Tutor v1 is an AI-powered Python tutor that actually *runs* the student's code in a safe sandbox, diagnoses the error, and guides the learner toward the fix using Socratic questions — never giving the answer directly. The goal is understanding, not correction.
 
 ---
 
-# Project Files
+## Architecture
 
-## `week4_mini_tutor.py`
-
-Core backend agent.
-
-Contains:
-- tool schemas
-- tool execution
-- ReAct loop
-- subprocess sandbox
-- tutor prompting
-- conversation management
-
----
-
-## `week4_app.py`
-
-Frontend UI built with Streamlit.
-
-Features:
-- iOS-inspired design
-- chat interface
-- sticky input bar
-- tutor/student bubbles
-- session history
-
----
-
-# Available Tools
-
-| Tool | Purpose |
-|---|---|
-| `run_python` | Executes Python code safely |
-| `lint_code` | Runs Ruff linting |
-| `doc_search` | Explains Python concepts |
-
----
-
-# Architecture
-
-```text
-Student
-   ↓
-Streamlit UI
-   ↓
-Tutor Agent
-   ↓
-Tool Loop
-   ↓
-run_python / lint_code / doc_search
-   ↓
-Tool Result
-   ↓
-Tutor Response
+```
+Student (Streamlit UI)
+        │
+        ▼
+  run_tutor_agent()          ← week4_mini_tutor.py
+        │
+        ▼
+┌───────────────────────────────────┐
+│         ReAct Loop                │
+│                                   │
+│  1. Build messages list           │
+│     [system + history + user]     │
+│                                   │
+│  2. Call Groq API                 │
+│     model: llama-3.3-70b-versatile│
+│                                   │
+│  3a. finish_reason == "stop"      │
+│      → return Socratic reply      │
+│                                   │
+│  3b. finish_reason == "tool_calls"│
+│      → convert to plain dict ✓    │
+│      → execute tool               │
+│      → append tool result         │
+│      → loop back to step 2        │
+└───────────────────────────────────┘
+        │
+        ▼
+  Tools (local Python functions)
+  ┌─────────────┐  ┌───────────┐  ┌────────────┐
+  │ run_python  │  │ lint_code │  │ doc_search │
+  │ subprocess  │  │   ruff    │  │ local dict │
+  │  sandbox    │  │  linter   │  │  (21 topics│
+  │  5s timeout │  │           │  │  partial   │
+  └─────────────┘  └───────────┘  │  match)    │
+                                  └────────────┘
+        │
+        ▼
+  Streamlit chat UI       ← week4_app.py
+  iOS-style design
+  Frosted nav bar
+  Message bubbles
+  Fixed input bar
 ```
 
+**Files:**
+- `week4_mini_tutor.py` — agent core: tools, schemas, ReAct loop
+- `week4_app.py` — Streamlit iOS-style chat UI
+- `week4_README.md` — this file
+
 ---
 
-# Installation
+## Tools
 
-## Install Dependencies
+| Tool | Description | When used |
+|---|---|---|
+| `run_python` | Executes code in a subprocess sandbox. 5s hard timeout, 30-line limit. Returns stdout + stderr. | First on every code submission — to see actual runtime behaviour |
+| `lint_code` | Runs `ruff` linter (E, F, W rules). Normalises temp file path in output. | When code runs but has style/quality issues worth discussing |
+| `doc_search` | Searches a 21-topic local Python docs dictionary with partial matching. | When student seems confused about a concept or keyword |
+
+---
+
+## Setup
 
 ```bash
 pip install openai streamlit python-dotenv ruff
 ```
 
----
-
-# Environment Variables
-
-Create `.env`
-
-```env
-GROQ_API_KEY=your_api_key_here
+Create `.env` in the project folder:
+```
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
----
-
-# Run CLI Version
-
-```bash
-python3 week4_mini_tutor.py
-```
+Never commit `.env` — add it to `.gitignore`.
 
 ---
 
-# Run Streamlit App
+## Run
 
 ```bash
+# Streamlit UI
 streamlit run week4_app.py
+
+# CLI (no Streamlit needed)
+python week4_mini_tutor.py
 ```
 
 ---
 
-# Concepts Learned
+## Example Interactions
 
-- AI agents
-- Tool calling
-- Safe execution
-- Streamlit UI
-- Conversation state
-- ReAct loops
-- Runtime analysis
-- AI orchestration
+### 1. NameError — typo in variable name
+**Student submits:**
+```python
+def greet(name):
+    message = "Hello, " + nme
+    print(message)
+
+greet("Alice")
+```
+
+**Tutor response:**
+> **Diagnosis:** Line 2 raises a `NameError` — Python cannot find a variable called `nme`.
+> **Question:** Look closely at line 2. You're combining a string with a variable called `nme` — does that name match what you defined in the function signature?
+> **Next Step:** Compare the spelling of every name on line 2 with your parameter name on line 1.
 
 ---
 
-# Future Improvements
+### 2. IndexError — off-by-one in range loop (beginner off-by-one bug)
+**Student submits:**
+```python
+marks = [85, 90, 78]
+for i in range(len(marks) + 1):
+    print("Mark", i + 1, ":", marks[i])
+```
 
-- Docker sandbox
-- Persistent memory
-- Multi-language support
-- Authentication
-- Database integration
-- Cloud deployment
-- Voice tutoring
-- Code editor integration
+**Tutor response:**
+> **Diagnosis:** Line 3 raises an `IndexError` — the loop runs one iteration too many and tries to access `marks[3]`, which doesn't exist.
+> **Question:** If `marks` has 3 items, what are the valid index values? And what does `range(len(marks) + 1)` actually produce?
+> **Next Step:** Print `list(range(len(marks) + 1))` to see exactly which values `i` takes.
+
+---
+
+### 3. Mutable default argument — classic Python trap
+**Student submits:**
+```python
+def add_item(item, cart=[]):
+    cart.append(item)
+    return cart
+
+print(add_item("apple"))
+print(add_item("banana"))
+```
+
+**Tutor response:**
+> **Diagnosis:** The default value `[]` is created once when the function is defined, not each time it is called, so the same list is reused across calls.
+> **Question:** What do you expect the second `print` to show? Run it and compare — does the output surprise you?
+> **Next Step:** Look up why Python default arguments should never be mutable objects like `[]` or `{}`.
+
+---
+
+### 4. IndentationError — missing indent inside if block
+**Student submits:**
+```python
+score = 75
+if score >= 50:
+print("Pass")
+```
+
+**Tutor response:**
+> **Diagnosis:** Line 3 has an `IndentationError` — Python expects the body of an `if` block to be indented.
+> **Question:** What does Python use indentation for, and how many spaces should line 3 be indented by?
+> **Next Step:** Add 4 spaces (or one Tab) before `print("Pass")` and run it again.
+
+---
+
+### 5. Logic bug — wrong output, no crash
+**Student submits:**
+```python
+numbers = [3, 1, 4, 1, 5]
+numbers.sort()
+print("Largest:", numbers[0])
+```
+*"I expected the largest number but got 1."*
+
+**Tutor response:**
+> **Diagnosis:** The code runs successfully, but `sort()` arranges numbers in ascending order by default, so `numbers[0]` is the smallest, not the largest.
+> **Question:** Print the full sorted list — in which direction does Python's `sort()` order numbers?
+> **Next Step:** Check whether `sort()` has a parameter that reverses the order.
+
+---
+
+## Known Limitations
+
+- `doc_search` covers 21 topics from a local dictionary, not the full Python docs.
+- No session memory across page refreshes — history resets when Streamlit reruns.
+- `lint_code` silently returns an error if `ruff` is not installed.
+- Code is capped at 30 lines — longer programs are rejected.
+- The tutor replies can contain Markdown bold syntax (`**Diagnosis:**`) which renders in the UI but appears raw in the CLI.
+
+## What I'd Improve Next (Week 5+)
+
+- Replace `doc_search` with a RAG pipeline over the full Python tutorial (Week 5).
+- Add a persistent learner profile tracking errors seen and concepts explained.
+- Move to LangGraph for proper stateful agent management (Week 6).
+- Add an LLM-as-judge eval suite for 20 common beginner bugs (Week 7).
+- Use a Docker container sandbox instead of subprocess for stronger isolation (Week 8).
+- Deploy to Streamlit Cloud with environment secrets management.
