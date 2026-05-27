@@ -370,7 +370,7 @@ with st.form("input_form", clear_on_submit=True):
 
     with col_hint:
         st.markdown(
-            f'<div class="limit-hint">Max {MAX_CODE_LINES} lines · 6 tool calls/turn</div>',
+            f'<div class="limit-hint">Max {MAX_CODE_LINES} lines · 8 tool calls/turn · packages auto-installed</div>',
             unsafe_allow_html=True
         )
 
@@ -429,9 +429,9 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown("**Tools**")
-    st.markdown("🔧 `run_python` — executes your code safely")
+    st.markdown("🔧 `run_python` — executes code, auto-installs packages")
     st.markdown("🔍 `lint_code` — checks for style issues")
-    st.markdown("📖 `doc_search` — explains Python concepts")
+    st.markdown("📖 `doc_search` — 80+ Python concepts")
     st.markdown("---")
 
     st.markdown("**Tips**")
