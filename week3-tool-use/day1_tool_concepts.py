@@ -4,6 +4,8 @@
 # -----------------------------------
 
 import traceback
+import sys
+import io
 
 # -----------------------------------
 # TOOL
@@ -25,16 +27,26 @@ def run_python(code):
 
     try:
 
-        # Capture print outputs
-        local_scope = {}
+        # Redirect stdout to capture print() output
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
 
+        local_scope = {}
         exec(code, {}, local_scope)
 
+        # Restore stdout and read captured output
+        sys.stdout = sys.__stdout__
+        printed = captured_output.getvalue()
+
         result["success"] = True
-        result["output"] = "Code executed successfully."
+        result["output"] = (
+            printed if printed.strip()
+            else "Code executed successfully."
+        )
 
     except Exception as e:
 
+        sys.stdout = sys.__stdout__
         result["error_type"] = type(e).__name__
         result["error_message"] = str(e)
 

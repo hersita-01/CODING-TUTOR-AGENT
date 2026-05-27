@@ -108,7 +108,7 @@ def lint_code(code):
                 "check",
                 temp_path,
                 "--select",
-                "E", "F", "W"
+                "E,F,W"
             ],
 
             capture_output=True,

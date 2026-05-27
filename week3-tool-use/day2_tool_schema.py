@@ -66,7 +66,10 @@ run_python_tool = {
                     "description":
                     (
                         "Whether standard output "
-                        "should be captured."
+                        "should be captured. "
+                        "Always True in this "
+                        "implementation; reserved "
+                        "for future use."
                     ),
 
                     "default": True
