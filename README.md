@@ -1,310 +1,357 @@
 # AI Coding Tutor Agent
 
-An AI-powered coding tutor that helps beginner programmers learn Python through guided explanations, debugging support, and Socratic questioning instead of directly giving answers.
+An AI-powered coding tutor that helps beginner programmers learn Python through guided debugging, Socratic questioning, safe code execution, and AI-assisted explanations.
+
+The tutor does not directly give answers.  
+Instead, it helps students think through bugs step-by-step.
 
 ---
 
-# Week 1 Progress
+# Project Goal
 
-## Day 1 — Environment Setup
+The goal of this project is to build a modern AI coding tutor capable of:
 
-Completed:
-- Ubuntu development setup
-- Git & GitHub configuration
-- Python virtual environment setup
-- VS Code setup
-- Installed AI development libraries
+- Understanding beginner Python mistakes
+- Running student code safely
+- Explaining runtime errors
+- Asking guiding questions
+- Using tools instead of guessing
+- Teaching programming concepts interactively
 
-Technologies:
-- Python
-- Git
-- LangChain
-- LangGraph
-- Streamlit
-- FastAPI
-- ChromaDB
+This project evolves week-by-week from:
+- Python foundations
+- Prompt engineering
+- AI tool use
+- Full AI tutor applications
 
 ---
 
-## Day 2 — Python Basics
+# Features
 
-Learned:
-- Variables & data types
-- Lists & dictionaries
-- Conditions (`if-else`)
-- Loops (`for` loop)
-
-Programs created:
-- Calculator
-- Even/Odd checker
-- Student marks program
-- List iteration exercises
-
-Skills gained:
-- Writing basic Python programs
-- Using loops and conditions
-- Working with collections
-
----
-
-## Day 3 — Functions & Debugging
-
-Learned:
-- Functions
-- Parameters & return values
-- Error handling (`try-except`)
-- File handling
-- Debugging common Python errors
-
-Practiced:
-- NameError
-- IndexError
-- TypeError
-
-Skills gained:
-- Reading Python errors
-- Writing reusable functions
-- File read/write operations
-- Debugging workflow
-
----
-
-## Day 4 — LLM API Integration
-
-Learned:
-- Working with LLM APIs
-- Using Groq API with OpenAI-compatible SDK
-- Secure API key handling using `.env`
-- Temperature & Max Tokens
-- API error handling
-
-Programs created:
-- `groq_test.py`
-- `first_llm.py`
-- `temperature_test.py`
-- `tokens_test.py`
-
-Skills gained:
-- AI API integration
-- Prompt execution
-- Model parameter tuning
-- Secure credential management
-
----
-
-## Day 5 — Prompt Engineering & AI Tutor Behavior
-
-Learned:
-- Prompt Engineering
-- AI Tutor Design
-- Role-based prompting
+- Beginner-friendly AI tutor
+- Guided debugging workflow
 - Socratic questioning
-- AI behavior control
-
-Built:
-- AI Coding Tutor using Groq API
-- Tutor-style prompts
-- Guided debugging interactions
-
-Files created:
-- `tutor_prompt.py`
-- `notes.txt`
-
-Example Tutor Prompt:
-
-```python
-prompt = """
-You are a beginner-friendly Python tutor.
-
-Rules:
-- Never directly give the answer
-- Ask guiding questions
-- Encourage the student
-- Explain concepts simply
-
-Student Question:
-"My Python loop is not working."
-"""
-```
-
-Skills gained:
-- Designing tutor-style AI behavior
-- Controlling AI responses using prompts
-- Building interactive learning experiences
+- Safe Python execution sandbox
+- Ruff linting integration
+- Python documentation search
+- Structured AI outputs
+- Streaming responses
+- Tool-calling AI agents
+- Runtime error analysis
+- Infinite loop protection
+- Streamlit frontend UI
 
 ---
 
-# Week 2 Progress
+# Technologies Used
 
-## Day 1 — Bug Explainer
-
-Built:
-- `bug_explainer.py`
-- A system/user prompt flow that explains beginner programming errors without immediately giving corrected code
-
-Skills gained:
-- Separating system prompts from user prompts
-- Writing beginner-friendly debugging instructions
-- Asking one guiding question at the end of an explanation
-
-## Day 2 — Few-Shot Socratic Hints
-
-Built:
-- `few_shot_bug_explainer.py`
-- Few-shot examples showing good Socratic hints and one bad answer-revealing hint
-
-Skills gained:
-- Using examples to shape model behavior
-- Running student code in a subprocess with a timeout
-- Capturing runtime errors for tutor feedback
-
-## Day 3 — Socratic Tutor Variants
-
-Built:
-- `friendly_tutor.py`
-- `socratic_hint_generator.py`
-- `chain_of_thought_tutor.py`
-- `strict_socratic_mode.py`
-- `safe_python_runner.py`
-
-Skills gained:
-- Comparing friendly, guided, and strict Socratic tutor behavior
-- Avoiding direct fixes
-- Asking targeted debugging questions
-
-## Day 4 — Structured Outputs
-
-Built:
-- `structured_tutor_response.py`
-- JSON tutor response format with `diagnosis`, `hint`, `follow_up_question`, and `confidence`
-
-Skills gained:
-- Producing structured model output for future UI integration
-- Parsing and validating JSON responses
-
-## Day 5 — Streaming, Cost, and Model Choice
-
-Built:
-- `streaming_tutor.py`
-- Notes on model size, latency, token limits, and cost-control habits
-
-Skills gained:
-- Streaming model responses
-- Capping `max_tokens`
-- Logging model and latency basics
+| Category | Tools |
+|---|---|
+| Programming Language | Python |
+| AI API | Groq API |
+| AI SDK | OpenAI Python SDK |
+| Frontend UI | Streamlit |
+| Linting | Ruff |
+| Environment Variables | python-dotenv |
+| Sandbox Execution | subprocess |
+| Version Control | Git & GitHub |
 
 ---
 
-# Week 3 Progress
-
-## Day 1 — Introduction to Tool Use
-
-Learned:
-- What AI tool/function calling means
-- How LLMs use Python functions as tools
-- Tool loop architecture
-- Safe execution concepts
-- Timeout protection
-
-Built:
-- `day1_tool_concepts.py`
-
-Skills gained:
-- Understanding AI tool workflows
-- Simulating tool execution
-- Connecting Python functions with AI systems
-
----
-
-## Day 2 — Tool Schema Design
-
-Learned:
-- JSON tool schemas
-- Function metadata design
-- Parameter validation
-- Structured tool definitions
-
-Built:
-- `day2_tool_schema.py`
-
-Skills gained:
-- Designing AI-compatible tools
-- Creating structured schemas
-- Understanding OpenAI-style function calling
-
-Example Tool Schema:
-
-```python
-run_python_tool = {
-    "type": "function",
-    "function": {
-        "name": "run_python",
-        "description": "Execute Python code safely",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "code": {"type": "string"}
-            }
-        }
-    }
-}
-
-# Current Project Structure
+# Complete Project Structure
 
 ```text
 coding-tutor-agent/
 │
 ├── week1-foundations/
+│   ├── README.md
+│   │
 │   ├── day2-python-basics/
 │   │   ├── basics.py
 │   │   └── student.py
+│   │
 │   ├── day3-functions-debugging/
 │   │   ├── functions.py
 │   │   └── notes.txt
+│   │
 │   ├── day4-llm-api/
 │   │   ├── first_llm.py
 │   │   ├── groq_test.py
 │   │   ├── temperature_test.py
 │   │   └── tokens_test.py
+│   │
 │   └── day5-prompt-engineering/
 │       ├── tutor_prompt.py
 │       └── notes.txt
 │
 ├── week2-prompt-engineering/
+│   ├── README.md
 │   ├── prompt_library.md
+│   │
 │   ├── day1-bug-explainer/
+│   │   ├── bug_explainer.py
+│   │   └── notes.md
+│   │
 │   ├── day2-few-shot/
+│   │   ├── few_shot_bug_explainer.py
+│   │   └── notes.md
+│   │
 │   ├── day3-socratic/
+│   │   ├── friendly_tutor.py
+│   │   ├── chain_of_thought_tutor.py
+│   │   ├── strict_socratic_mode.py
+│   │   ├── safe_python_runner.py
+│   │   ├── socratic_hint_generator.py
+│   │   └── README.md
+│   │
 │   ├── day4-structured-output/
+│   │   ├── structured_tutor_response.py
+│   │   └── notes.md
+│   │
 │   └── day5-streaming-cost/
-|
+│       ├── streaming_tutor.py
+│       └── notes.md
+│
 ├── week3-tool-use/
+│   ├── README.md
 │   ├── day1_tool_concepts.py
 │   ├── day2_tool_schema.py
-│   └── notes.txt
+│   ├── day3_tool_loop.py
+│   ├── day4_multi_tools.py
+│   └── day5_safe_tool_agent.py
+│
+├── week4-mini-tutor/
+│   ├── week4_mini_tutor.py
+│   ├── week4_app.py
+│   ├── week4_README.md
+│   └── .env
 │
 ├── tutor-env/
-├── README.md
-└── .gitignore
+├── .gitignore
+└── README.md
 ```
 
 ---
 
-# Goals
+# Weekly Progression
 
-- Build an AI-powered coding tutor
-- Help beginners debug Python code
-- Teach through guided questioning
-- Explore AI agents and prompt engineering
-- Learn modern AI application development
+| Week | Focus |
+|---|---|
+| Week 1 | Python foundations & AI API basics |
+| Week 2 | Prompt engineering & tutor behavior |
+| Week 3 | Tool-calling AI agents |
+| Week 4 | Full AI tutor application |
 
-# Features
+---
 
-- AI-powered Python tutoring
-- Beginner-friendly debugging support
-- Socratic questioning approach
-- Safe Python code execution
-- Structured AI responses
-- Streaming tutor responses
-- Tool-based AI workflows
-- Timeout protection for infinite loops
+# Week 1 — Foundations
+
+Focus:
+Learning Python fundamentals and integrating AI APIs.
+
+Topics:
+- Variables
+- Loops
+- Functions
+- Debugging
+- File handling
+- AI APIs
+- Prompt engineering
+
+---
+
+# Week 2 — Prompt Engineering
+
+Focus:
+Improving AI tutoring quality using prompts.
+
+Topics:
+- Bug explanation
+- Few-shot prompting
+- Socratic questioning
+- Structured outputs
+- Streaming responses
+
+---
+
+# Week 3 — Tool Use
+
+Focus:
+Allowing the AI tutor to safely use tools instead of guessing.
+
+Topics:
+- Function calling
+- Tool schemas
+- ReAct loops
+- Safe code execution
+- Linting
+- Documentation search
+- Runtime protection
+
+---
+
+# Week 4 — Mini-Tutor v1
+
+Focus:
+Building a complete AI-powered coding tutor application.
+
+Features:
+- Streamlit UI
+- Tool-calling AI agent
+- Safe subprocess execution
+- Conversation memory
+- Guided debugging workflow
+
+---
+
+# Installation
+
+## Clone Repository
+
+```bash
+git clone <your-repo-url>
+cd coding-tutor-agent
+```
+
+---
+
+## Create Virtual Environment
+
+```bash
+python3 -m venv tutor-env
+source tutor-env/bin/activate
+```
+
+---
+
+## Install Dependencies
+
+```bash
+pip install openai streamlit python-dotenv ruff
+```
+
+---
+
+# Environment Variables
+
+Create a `.env` file:
+
+```env
+GROQ_API_KEY=your_api_key_here
+```
+
+---
+
+# Run Week 4 Mini-Tutor
+
+## CLI Version
+
+```bash
+python3 week4_mini_tutor.py
+```
+
+---
+
+## Streamlit App
+
+```bash
+streamlit run week4_app.py
+```
+
+---
+
+# Example Tutor Workflow
+
+## Student Code
+
+```python
+numbers = [1, 2, 3]
+print(numbers[10])
+```
+
+## Runtime Error
+
+```text
+IndexError: list index out of range
+```
+
+## Tutor Response
+
+```text
+Diagnosis:
+You are trying to access a list position that does not exist.
+
+Question:
+How many elements are currently inside the list?
+
+Next Step:
+Check the valid index range before accessing the list.
+```
+
+---
+
+# Core AI Tools
+
+| Tool | Purpose |
+|---|---|
+| `run_python` | Executes Python safely |
+| `lint_code` | Runs Ruff linting |
+| `doc_search` | Explains Python concepts |
+
+---
+
+# AI Tutor Architecture
+
+```text
+Student
+   ↓
+Streamlit UI
+   ↓
+Tutor Agent
+   ↓
+Tool Loop
+   ↓
+run_python / lint_code / doc_search
+   ↓
+Tool Result
+   ↓
+Tutor Response
+```
+
+---
+
+# Key Learning Outcomes
+
+This project teaches:
+- Python programming
+- Prompt engineering
+- AI agents
+- Tool calling
+- Safe execution systems
+- Runtime analysis
+- Streamlit frontend development
+- Full-stack AI application design
+
+---
+
+# Future Improvements
+
+- Docker sandboxing
+- Persistent memory
+- Multi-language support
+- Voice tutoring
+- Authentication system
+- Student progress tracking
+- Vector database integration
+- Cloud deployment
+
+---
+
+# Author
+
+Built as part of an AI engineering learning journey focused on:
+- AI tutors
+- Prompt engineering
+- Tool-calling agents
+- Safe execution systems
+- Full-stack AI applications
