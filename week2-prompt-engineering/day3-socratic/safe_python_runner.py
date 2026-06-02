@@ -13,7 +13,48 @@ class RunResult:
     output: str = ""
 
 
+# SECURITY VALIDATION
+# Blocks dangerous student-code patterns before compilation or execution.
+BLOCKED_PATTERNS = [
+    "import os",
+    "import subprocess",
+    "import shutil",
+    "os.remove",
+    "os.rmdir",
+    "os.system",
+    "shutil.rmtree",
+    "eval(",
+    "exec(",
+]
+
+
 def run_python_safely(code: str, timeout_s: int = 3) -> RunResult:
+    # SECURITY VALIDATION
+    # Compact matching catches simple spacing tricks such as "import    os".
+    compact_code = "".join(code.split())
+    for pattern in BLOCKED_PATTERNS:
+        compact_pattern = "".join(pattern.split())
+        if compact_pattern in compact_code:
+            return RunResult(
+                ok=False,
+                error_type="SecurityViolation",
+                error_message=(
+                    f"Detected forbidden operation: {pattern}. "
+                    "This tutor only allows safe programming exercises."
+                ),
+            )
+
+    # SECURITY VALIDATION
+    # Syntax is checked before execution so invalid code never reaches subprocess.run.
+    try:
+        compile(code, "<student_code>", "exec")
+    except SyntaxError as syntax_error:
+        return RunResult(
+            ok=False,
+            error_type="SyntaxError",
+            error_message=str(syntax_error),
+        )
+
     with tempfile.TemporaryDirectory() as temp_dir:
         script_path = Path(temp_dir) / "student_code.py"
         script_path.write_text(code, encoding="utf-8")

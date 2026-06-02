@@ -8,4 +8,4 @@ This folder compares several tutor behaviors:
 - `strict_socratic_mode.py`: asks only one question and does not explain or fix the code.
 - `safe_python_runner.py`: runs pasted Python code in a temporary subprocess with a timeout.
 
-Run a script, paste code when prompted, and type `END` to finish input.
+Run a script, paste code when prompted, and press ENTER twice to finish input.
