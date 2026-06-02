@@ -21,7 +21,7 @@ MODEL_NAME = "llama-3.1-8b-instant"
 MAX_TOKENS = 500  # Increased to prevent response truncation mid-sentence
 
 print("Ask the tutor a Python question.")
-print("Press ENTER three times when finished to submit.\n") # Increased count for structural stability
+print("Press ENTER two times when finished to submit.\n") # Increased count for structural stability
 
 lines = []
 blank_count = 0
@@ -36,7 +36,7 @@ while True:
     else:
         blank_count = 0
 
-    if blank_count == 3:
+    if blank_count == 2:
         break
 
     lines.append(line)
