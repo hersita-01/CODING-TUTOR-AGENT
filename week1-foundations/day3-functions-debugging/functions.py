@@ -29,7 +29,8 @@ print(result)
 try:
     number = int(input("Enter a number: "))
     print(number)
-except:
+
+except ValueError:
     print("Invalid input")
 
 
@@ -37,6 +38,7 @@ file = open("notes.txt", "w")
 file.write("Hello AI Tutor")
 file.close()
 print("File created")
+
 
 file = open("notes.txt", "r")
 content = file.read()
