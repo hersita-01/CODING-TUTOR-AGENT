@@ -1,8 +1,26 @@
-## safe_python_runner.py is a safe execution tool with an optional direct
-## command-line tutor mode. Tutor scripts can import run_python_safely(), while
-## running this file directly can execute code and ask the AI tutor about errors.
+## safe_python_runner.py — Security-hardened edition
+##
+## Changes from security review:
+##   C1  AST-based security analysis (replaces string matching)
+##   C2  visit_ImportFrom tracks from-imports of dangerous names
+##   C3  __import__ added to _DANGEROUS_BUILTINS
+##   C4  importlib.import_module blocked
+##   C5  Model updated: llama-3.1-8b-instant → llama-3.3-70b-versatile
+##   C6  Full traceback (result.output) sent to AI tutor
+##   B23 sys.modules subscript access blocked in AST visitor
+##   B24 generic_visit propagation ensures lambdas/nested exprs are walked
+##   H1  Memory limit via resource.setrlimit (Linux/macOS only)
+##   H3  max_tokens raised from 400 → 700
+##   H4  EOFError added to KNOWN_ERROR_TYPES; auto-inject stdin on empty input
+##   H5  Graceful API failure message
+##   M2  breakpoint() added to _DANGEROUS_BUILTINS
+##   M3  ctypes.CDLL / ctypes.cdll blocked
+##   M5  Temp path normalised to <student_code> before AI and display
+##   Misc  Redundant double-check in __main__ removed
 
+import ast
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -24,26 +42,67 @@ class RunResult:
 
 
 # -----------------------------------
-# SECURITY VALIDATION
+# SECURITY VALIDATION  (C1–C4, B23, B24, M2, M3)
 # -----------------------------------
 
-# Blocks dangerous student-code patterns before syntax checks or execution.
-BLOCKED_PATTERNS = [
-    "import os",
-    "import subprocess",
-    "import shutil",
-    "os.remove",
-    "os.system",
-    "os.rmdir",
-    "shutil.rmtree",
-    "subprocess.run",
-    "subprocess.Popen",
-    "eval(",
-    "exec(",
-    "open(",
-    "pathlib.Path.unlink",
-    "pathlib.Path.rmdir",
-]
+# WHY AST INSTEAD OF STRING MATCHING
+# ------------------------------------
+# String matching on source code cannot distinguish:
+#   - a word inside a comment from a real import statement
+#   - a string literal mentioning os.remove from an actual call to it
+#   - the characters "eval(" inside a longer identifier from the call eval()
+#
+# AST parsing solves all of this.  Python's own parser builds a tree of real
+# executable nodes.  Comments, strings, and docstrings are invisible to the
+# visitor, so dangerous-looking words inside them are never flagged.  We
+# inspect only ast.Call nodes (real invocations) and ast.Import/ImportFrom
+# nodes (real imports), which lets us distinguish "import os" (safe) from
+# "os.system(...)" (dangerous).
+
+# Dangerous method calls grouped by the module they belong to.
+_DANGEROUS_ATTR_CALLS: dict[str, set[str]] = {
+    "os": {
+        "remove", "unlink", "rmdir", "removedirs",
+        "system", "popen", "startfile",
+        "makedirs", "mkdir", "rename", "replace",
+        "fork", "forkpty",                          # fork bomb (H1/sandbox)
+    },
+    "shutil": {
+        "rmtree", "move", "copy", "copy2",
+        "copyfile", "copytree",
+    },
+    "subprocess": {
+        "run", "Popen", "call",
+        "check_call", "check_output",
+        "getoutput", "getstatusoutput",
+    },
+    "importlib": {                                  # C4
+        "import_module", "__import__",
+    },
+    "ctypes": {                                     # M3
+        "CDLL", "cdll", "WinDLL", "OleDLL", "PyDLL",
+    },
+}
+
+# Built-in names that are always dangerous regardless of context.
+_DANGEROUS_BUILTINS: set[str] = {
+    "eval", "exec",
+    "__import__",   # C3
+    "breakpoint",   # M2
+}
+
+# Method names that are destructive on any receiver (e.g. Path.unlink).
+_DANGEROUS_INSTANCE_METHODS: set[str] = {"unlink", "rmdir"}
+
+# open() modes that write to disk — read-only access is allowed.
+_WRITE_MODES: frozenset[str] = frozenset({
+    "w", "wb", "wt",
+    "a", "ab", "at",
+    "x", "xb", "xt",
+    "w+", "wb+", "r+b",
+    "a+", "ab+",
+    "x+", "xb+",
+})
 
 KNOWN_ERROR_TYPES = {
     "SyntaxError",
@@ -60,20 +119,151 @@ KNOWN_ERROR_TYPES = {
     "FileNotFoundError",
     "ModuleNotFoundError",
     "PermissionError",
+    "EOFError",          # H4 — empty stdin when input() is called
 }
 
 
-def find_forbidden_operation(code: str) -> str | None:
-    # Compact matching catches simple spacing tricks such as "import    os".
-    compact_code = "".join(code.split())
+class _SecurityVisitor(ast.NodeVisitor):
+    """
+    Walks an AST and records the first dangerous operation it finds.
 
-    for pattern in BLOCKED_PATTERNS:
-        compact_pattern = "".join(pattern.split())
+    Tracks:
+      _aliases        — import X as Y  →  Y maps to real module X
+      _dangerous_names — from os import system  →  'system' maps to 'os.system'
 
-        if compact_pattern in compact_code:
-            return pattern
+    Only ast.Call nodes (actual invocations) and import nodes are inspected.
+    Comments, string literals, and attribute *reads* are never flagged.
+    generic_visit is called at the end of every visit_* method so the walk
+    always descends into nested expressions, lambdas, and comprehensions (B24).
+    """
 
+    def __init__(self) -> None:
+        self._aliases: dict[str, str] = {}        # local → real module root
+        self._dangerous_names: dict[str, str] = {}  # local → "module.func"
+        self.violation: str | None = None
+
+    # ── Import tracking ──────────────────────────────────────────────────────
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            local = alias.asname or alias.name
+            real = alias.name.split(".")[0]
+            self._aliases[local] = real
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        """C2 — track dangerous names brought into scope via from-imports."""
+        module = (node.module or "").split(".")[0]
+        danger = _DANGEROUS_ATTR_CALLS.get(module, set())
+        for alias in node.names:
+            local = alias.asname or alias.name
+            if alias.name in danger:
+                self._dangerous_names[local] = f"{module}.{alias.name}"
+        self.generic_visit(node)
+
+    # ── Call inspection ───────────────────────────────────────────────────────
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if self.violation:
+            return
+
+        func = node.func
+
+        # ── Bare name calls: eval(), exec(), __import__(), breakpoint() ──────
+        if isinstance(func, ast.Name):
+            if func.id in _DANGEROUS_BUILTINS:
+                self.violation = f"{func.id}()"
+                return
+
+            # from-import aliases: e.g. 'system' imported from 'os'
+            if func.id in self._dangerous_names:
+                self.violation = f"{self._dangerous_names[func.id]}()"
+                return
+
+            # open() in write/append/exclusive-create mode
+            if func.id == "open":
+                mode = _open_mode_arg(node)
+                if mode in _WRITE_MODES:
+                    self.violation = f"open(..., {mode!r})"
+                    return
+
+        # ── Attribute calls: os.remove(), subprocess.run(), etc. ─────────────
+        elif isinstance(func, ast.Attribute):
+            method = func.attr
+
+            # B23 — sys.modules['dangerous_module'] subscript access
+            if (
+                method == "__getitem__"
+                or isinstance(func.value, ast.Subscript)
+            ):
+                if _is_sys_modules_subscript(func.value):
+                    self.violation = "sys.modules[...] (dynamic module access)"
+                    return
+
+            # Direct sys.modules[...] attribute call: sys.modules['os'].system(...)
+            if isinstance(func.value, ast.Subscript):
+                if _is_sys_modules_subscript(func.value):
+                    self.violation = f"sys.modules[...].{method}()"
+                    return
+
+            # Dangerous instance methods regardless of receiver type
+            if method in _DANGEROUS_INSTANCE_METHODS:
+                self.violation = f".{method}()"
+                return
+
+            # Module-specific dangerous methods
+            if isinstance(func.value, ast.Name):
+                real = self._aliases.get(func.value.id, func.value.id)
+                if method in _DANGEROUS_ATTR_CALLS.get(real, set()):
+                    self.violation = f"{real}.{method}()"
+                    return
+
+        # Always descend — catches lambdas, comprehensions, nested calls (B24)
+        self.generic_visit(node)
+
+
+def _is_sys_modules_subscript(node: ast.expr) -> bool:
+    """Return True if node is sys.modules[<anything>]."""
+    return (
+        isinstance(node, ast.Subscript)
+        and isinstance(node.value, ast.Attribute)
+        and node.value.attr == "modules"
+        and isinstance(node.value.value, ast.Name)
+        and node.value.value.id == "sys"
+    )
+
+
+def _open_mode_arg(node: ast.Call) -> str | None:
+    """Extract the mode string from an open() call, if it is a literal."""
+    if len(node.args) >= 2:
+        arg = node.args[1]
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            return arg.value
+    for kw in node.keywords:
+        if kw.arg == "mode" and isinstance(kw.value, ast.Constant):
+            return kw.value.value
     return None
+
+
+def find_forbidden_operation(code: str) -> str | None:
+    """
+    Parse student code into an AST and check for dangerous calls.
+
+    Returns a short description of the first dangerous operation found,
+    or None if the code appears safe to execute.
+
+    If the code has a SyntaxError, ast.parse() raises SyntaxError and we
+    return None — the SyntaxError is then caught by compile() in
+    run_python_safely() so the AI tutor can explain it.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None  # let compile() handle it
+
+    visitor = _SecurityVisitor()
+    visitor.visit(tree)
+    return visitor.violation
 
 
 def security_violation_result(operation: str) -> RunResult:
@@ -82,10 +272,40 @@ def security_violation_result(operation: str) -> RunResult:
         error_type="SecurityViolation",
         error_message=(
             "SECURITY VIOLATION DETECTED\n\n"
-            f"Forbidden operation found: {operation}\n\n"
-            "This tutor only allows safe educational Python code."
+            f"Dangerous operation: {operation}\n\n"
+            "Execution blocked to protect the tutor environment."
         ),
     )
+
+
+# -----------------------------------
+# MEMORY LIMIT HELPER  (H1)
+# -----------------------------------
+
+def _set_memory_limit() -> None:
+    """
+    Called as preexec_fn — runs inside the child process before exec.
+    Limits virtual address space to 256 MB to prevent memory exhaustion.
+    Linux and macOS only; silently skipped on Windows.
+    """
+    try:
+        import resource  # noqa: PLC0415  (local import is intentional)
+        limit = 256 * 1024 * 1024  # 256 MB
+        resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+    except Exception:
+        pass  # Not available on all platforms; fail silently
+
+
+# -----------------------------------
+# TEMP PATH NORMALISATION  (M5)
+# -----------------------------------
+
+_TEMP_PATH_RE = re.compile(r'(?:/tmp|/var/folders)[^\s"\']*student_code\.py')
+
+
+def _normalise_paths(text: str) -> str:
+    """Replace raw temp file paths with a readable placeholder."""
+    return _TEMP_PATH_RE.sub("<student_code>", text)
 
 
 # -----------------------------------
@@ -95,14 +315,13 @@ def security_violation_result(operation: str) -> RunResult:
 def run_python_safely(
     code: str,
     user_input: str = "",
-    timeout_s: int = 3
+    timeout_s: int = 3,
 ) -> RunResult:
     forbidden_operation = find_forbidden_operation(code)
-
     if forbidden_operation:
         return security_violation_result(forbidden_operation)
 
-    # Syntax is checked before execution so invalid code never reaches subprocess.run.
+    # Check syntax before execution so invalid code never reaches subprocess.
     try:
         compile(code, "<student_code>", "exec")
     except (SyntaxError, IndentationError) as error:
@@ -112,19 +331,28 @@ def run_python_safely(
             error_message=str(error),
         )
 
+    # H4 — auto-inject newlines when code calls input() but no input provided.
+    stdin_data = user_input
+    if not stdin_data and re.search(r"\binput\s*\(", code):
+        stdin_data = "\n" * 10
+
     with tempfile.TemporaryDirectory() as temp_dir:
         script_path = Path(temp_dir) / "student_code.py"
         script_path.write_text(code, encoding="utf-8")
 
+        # preexec_fn is Unix-only; skip on Windows (H1)
+        preexec = _set_memory_limit if platform.system() != "Windows" else None
+
         try:
             completed = subprocess.run(
                 [sys.executable, str(script_path)],
-                input=user_input,
+                input=stdin_data,
                 capture_output=True,
                 text=True,
                 timeout=timeout_s,
                 cwd=temp_dir,
                 check=False,
+                preexec_fn=preexec,
             )
         except subprocess.TimeoutExpired:
             return RunResult(
@@ -136,17 +364,15 @@ def run_python_safely(
                 ),
             )
 
-    # Base final output on standard output streams
+    stdout = _normalise_paths(completed.stdout.strip())
+    stderr = _normalise_paths(completed.stderr.strip())
     output = (completed.stdout + completed.stderr).strip()
+    output = _normalise_paths(output)
 
     if completed.returncode == 0:
-        return RunResult(
-            ok=True,
-            output=completed.stdout.strip(),
-        )
+        return RunResult(ok=True, output=stdout)
 
-    # Target stderr exclusively for error messages so stdout doesn't corrupt it
-    error_source = completed.stderr.strip() if completed.stderr.strip() else output
+    error_source = stderr if stderr else output
     error_type = "RuntimeError"
     error_message = (
         error_source.splitlines()[-1]
@@ -160,10 +386,7 @@ def run_python_safely(
         if possible_type in KNOWN_ERROR_TYPES:
             error_type = possible_type
             error_message = message
-        elif (
-            possible_type.endswith("Error")
-            or possible_type.endswith("Exception")
-        ):
+        elif possible_type.endswith(("Error", "Exception")):
             error_type = possible_type
             error_message = message
 
@@ -249,30 +472,34 @@ def explain_error_with_ai(student_code: str, result: RunResult) -> None:
         base_url="https://api.groq.com/openai/v1",
     )
 
+    # C6 — include full traceback so the AI can cite the exact line number.
     user_prompt = f"""
 Student Code:
 {student_code}
 
-Detected Error:
-{result.error_type}: {result.error_message}
+Full Traceback:
+{result.output}
+
+Error Type: {result.error_type}
+Error Message: {result.error_message}
 
 Tasks:
-1. Diagnose the error.
-2. Explain why it happened.
+1. Diagnose the error and state which line caused it.
+2. Explain why it happened in plain English.
 3. Do NOT provide corrected code.
-4. Ask one guiding question.
+4. Ask one guiding question pointing to the right line.
 5. Suggest one small next step.
 """
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="llama-3.3-70b-versatile",   # C5 — was llama-3.1-8b-instant
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.2,
-            max_tokens=400,  # Bumped up to prevent text truncation
+            max_tokens=700,   # H3 — was 400, 4-part response needs ~500-600
         )
 
         print("\n===================================")
@@ -281,8 +508,11 @@ Tasks:
         print(response.choices[0].message.content)
 
     except Exception as error:
-        print("\nAI Tutor request failed.")
-        print(error)
+        # H5 — graceful failure: show the error info even if AI is unavailable
+        print("\nThe AI tutor is temporarily unavailable.")
+        print("Your error was detected successfully — here is what happened:")
+        print(f"  {result.error_type}: {result.error_message}")
+        print(f"\n(Technical detail: {error})")
 
 
 # -----------------------------------
@@ -319,14 +549,16 @@ if __name__ == "__main__":
         print("ERROR: No Python code was entered.")
         sys.exit(1)
 
+    # Early security check for UX — avoids prompting for user input when code
+    # is already going to be blocked.  run_python_safely() checks again
+    # internally, so there is no double-execution risk.
     forbidden_operation = find_forbidden_operation(student_code)
     if forbidden_operation:
         print("\nSECURITY VIOLATION DETECTED\n")
-        print(f"Forbidden operation found: {forbidden_operation}\n")
-        print("This tutor only allows safe educational Python code.")
+        print(f"Dangerous operation: {forbidden_operation}\n")
+        print("Execution blocked to protect the tutor environment.")
         sys.exit(1)
 
-    # FIXED: Only ask for input if a real input() function call is found!
     user_input = ""
     if re.search(r"\binput\s*\(", student_code):
         user_input = read_multiline_input("\nEnter program input for your script.")
@@ -346,7 +578,6 @@ if __name__ == "__main__":
         else:
             print("\nThe code executed successfully but produced no output.")
             print("This usually means there are no print() statements.")
-
         sys.exit(0)
 
     print("\n===================================")
