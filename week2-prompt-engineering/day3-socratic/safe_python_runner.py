@@ -1,22 +1,3 @@
-## safe_python_runner.py — Security-hardened edition
-##
-## Changes from security review:
-##   C1  AST-based security analysis (replaces string matching)
-##   C2  visit_ImportFrom tracks from-imports of dangerous names
-##   C3  __import__ added to _DANGEROUS_BUILTINS
-##   C4  importlib.import_module blocked
-##   C5  Model updated: llama-3.1-8b-instant → llama-3.3-70b-versatile
-##   C6  Full traceback (result.output) sent to AI tutor
-##   B23 sys.modules subscript access blocked in AST visitor
-##   B24 generic_visit propagation ensures lambdas/nested exprs are walked
-##   H1  Memory limit via resource.setrlimit (Linux/macOS only)
-##   H3  max_tokens raised from 400 → 700
-##   H4  EOFError added to KNOWN_ERROR_TYPES; auto-inject stdin on empty input
-##   H5  Graceful API failure message
-##   M2  breakpoint() added to _DANGEROUS_BUILTINS
-##   M3  ctypes.CDLL / ctypes.cdll blocked
-##   M5  Temp path normalised to <student_code> before AI and display
-##   Misc  Redundant double-check in __main__ removed
 
 import ast
 import os
@@ -40,24 +21,6 @@ class RunResult:
     error_message: str = ""
     output: str = ""
 
-
-# -----------------------------------
-# SECURITY VALIDATION  (C1–C4, B23, B24, M2, M3)
-# -----------------------------------
-
-# WHY AST INSTEAD OF STRING MATCHING
-# ------------------------------------
-# String matching on source code cannot distinguish:
-#   - a word inside a comment from a real import statement
-#   - a string literal mentioning os.remove from an actual call to it
-#   - the characters "eval(" inside a longer identifier from the call eval()
-#
-# AST parsing solves all of this.  Python's own parser builds a tree of real
-# executable nodes.  Comments, strings, and docstrings are invisible to the
-# visitor, so dangerous-looking words inside them are never flagged.  We
-# inspect only ast.Call nodes (real invocations) and ast.Import/ImportFrom
-# nodes (real imports), which lets us distinguish "import os" (safe) from
-# "os.system(...)" (dangerous).
 
 # Dangerous method calls grouped by the module they belong to.
 _DANGEROUS_ATTR_CALLS: dict[str, set[str]] = {

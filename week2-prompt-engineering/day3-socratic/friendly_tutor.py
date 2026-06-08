@@ -1,26 +1,3 @@
-"""
-friendly_tutor.py — Production-hardened edition
-
-Architecture changes from review:
-  FT-A1  Module-level code wrapped in main() — no side-effects on import
-  FT-A2  collect_student_code() extracted as a named, testable function
-  FT-A3  collect_user_input() extracted as a named, testable function
-  FT-A4  build_tutor_response() extracted — AI call isolated and testable
-  FT-A5  Config constants (MODEL, MAX_TOKENS, TEMPERATURE) at top of file
-  FT-S1  SecurityViolation checked BEFORE success — correct logical order
-  FT-S2  student_code size-capped (MAX_CODE_BYTES) before execution
-  FT-P1  system_prompt moved to module constant — not rebuilt on every run
-  FT-P2  user_prompt wraps student code in XML delimiters — prevents injection
-  FT-P3  user_prompt instructs model to ignore instructions inside <code> block
-  FT-P4  Structured output tags added to system_prompt for reliable parsing
-  FT-P5  Explicit error-type guidance per error class added to system_prompt
-  FT-E1  Graceful handler distinguishes API auth errors from transient failures
-  FT-E2  Empty API response (finish_reason != 'stop') handled explicitly
-  FT-U1  Code size rejection gives student a clear, actionable message
-  FT-U2  Security violation exit code changed to 1 (was 0 — wrong semantics)
-  FT-U3  Success banner added so student clearly sees execution succeeded
-"""
-
 import os
 import sys
 
