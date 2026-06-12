@@ -1,8 +1,0 @@
-Day 5 Notes
-
-- Learned about prompt engineering
-- Designed AI tutor behavior
-- Used system-style prompting
-- Practiced Socratic questioning
-- Controlled AI response style
-- Used Grok API for tutoring experiments
