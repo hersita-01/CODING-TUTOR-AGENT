@@ -1,0 +1,22 @@
+# Environment variables and secrets
+.env
+.env.*
+*.env
+
+# Virtual environment
+tutor-env/
+
+# Python cache and compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# VS Code settings
+.vscode/
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# System files
+.DS_Store
