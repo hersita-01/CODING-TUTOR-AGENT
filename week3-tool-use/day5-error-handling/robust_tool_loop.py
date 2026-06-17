@@ -202,11 +202,9 @@ def categorise_api_error(exc: Exception) -> str:
         return ApiFailureCategory.AUTH
     if "429" in exc_str or "rate limit" in exc_str:
         return ApiFailureCategory.RATE_LIMIT
-    if "model" in exc_str and ("not found" in exc_str or "deprecated" in exc_str
-                                 or "does not exist" in exc_str):
+    if "model" in exc_str and ("not found" in exc_str or "deprecated" in exc_str or "does not exist" in exc_str):
         return ApiFailureCategory.MODEL_ERROR
-    if any(term in exc_str for term in
-           ("connection", "timeout", "network", "unreachable", "dns")):
+    if any(term in exc_str for term in ("connection", "timeout", "network", "unreachable", "dns")):
         return ApiFailureCategory.NETWORK
     return ApiFailureCategory.UNKNOWN
 
