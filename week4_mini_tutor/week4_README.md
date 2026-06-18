@@ -43,10 +43,11 @@ Student (Streamlit UI)
   ┌─────────────┐  ┌───────────┐  ┌────────────┐
   │ run_python  │  │ lint_code │  │ doc_search │
   │ subprocess  │  │   ruff    │  │ local dict │
-  │  sandbox    │  │  linter   │  │  (21 topics│
-  │  5s timeout │  │           │  │  partial   │
-  └─────────────┘  └───────────┘  │  match)    │
-                                  └────────────┘
+  │  sandbox    │  │  linter   │  │  (80+ topic│
+  │  15s timeout│  │           │  │  partial   │
+  │  30-line max│  │           │  │  match)    │
+  │  +line_num  │  │           │  │            │
+  └─────────────┘  └───────────┘  └────────────┘
         │
         ▼
   Streamlit chat UI       ← week4_app.py
@@ -67,7 +68,7 @@ Student (Streamlit UI)
 
 | Tool | Description | When used |
 |---|---|---|
-| `run_python` | Executes code in a subprocess sandbox. 5s hard timeout, 30-line limit. Returns stdout + stderr. | First on every code submission — to see actual runtime behaviour |
+| `run_python` | Executes code in a subprocess sandbox. 15s hard timeout, 30-line limit. Returns stdout + stderr + the exact failing line number. | First on every code submission — to see actual runtime behaviour |
 | `lint_code` | Runs `ruff` linter (E, F, W rules). Normalises temp file path in output. | When code runs but has style/quality issues worth discussing |
 | `doc_search` | Searches a 21-topic local Python docs dictionary with partial matching. | When student seems confused about a concept or keyword |
 
@@ -113,9 +114,9 @@ greet("Alice")
 ```
 
 **Tutor response:**
-> **Diagnosis:** Line 2 raises a `NameError` — Python cannot find a variable called `nme`.
-> **Question:** Look closely at line 2. You're combining a string with a variable called `nme` — does that name match what you defined in the function signature?
-> **Next Step:** Compare the spelling of every name on line 2 with your parameter name on line 1.
+> Diagnosis: Line 2 raises a NameError — Python cannot find a variable called `nme`.
+> Question: Look closely at line 2. You're combining a string with a variable called `nme` — does that name match what you defined in the function signature?
+> Next Step: Compare the spelling of every name on line 2 with your parameter name on line 1.
 
 ---
 
@@ -128,9 +129,9 @@ for i in range(len(marks) + 1):
 ```
 
 **Tutor response:**
-> **Diagnosis:** Line 3 raises an `IndexError` — the loop runs one iteration too many and tries to access `marks[3]`, which doesn't exist.
-> **Question:** If `marks` has 3 items, what are the valid index values? And what does `range(len(marks) + 1)` actually produce?
-> **Next Step:** Print `list(range(len(marks) + 1))` to see exactly which values `i` takes.
+> Diagnosis: Line 3 raises an IndexError — the loop runs one iteration too many and tries to access `marks[3]`, which doesn't exist.
+> Question: If `marks` has 3 items, what are the valid index values? And what does `range(len(marks) + 1)` actually produce?
+> Next Step: Print `list(range(len(marks) + 1))` to see exactly which values `i` takes.
 
 ---
 
@@ -146,9 +147,9 @@ print(add_item("banana"))
 ```
 
 **Tutor response:**
-> **Diagnosis:** The default value `[]` is created once when the function is defined, not each time it is called, so the same list is reused across calls.
-> **Question:** What do you expect the second `print` to show? Run it and compare — does the output surprise you?
-> **Next Step:** Look up why Python default arguments should never be mutable objects like `[]` or `{}`.
+> Diagnosis: The default value `[]` is created once when the function is defined, not each time it is called, so the same list is reused across calls.
+> Question: What do you expect the second `print` to show? Run it and compare — does the output surprise you?
+> Next Step: Look up why Python default arguments should never be mutable objects like `[]` or `{}`.
 
 ---
 
@@ -161,9 +162,9 @@ print("Pass")
 ```
 
 **Tutor response:**
-> **Diagnosis:** Line 3 has an `IndentationError` — Python expects the body of an `if` block to be indented.
-> **Question:** What does Python use indentation for, and how many spaces should line 3 be indented by?
-> **Next Step:** Add 4 spaces (or one Tab) before `print("Pass")` and run it again.
+> Diagnosis: Line 3 has an IndentationError — Python expects the body of an `if` block to be indented.
+> Question: What does Python use indentation for, and how many spaces should line 3 be indented by?
+> Next Step: Add 4 spaces (or one Tab) before `print("Pass")` and run it again.
 
 ---
 
@@ -177,19 +178,20 @@ print("Largest:", numbers[0])
 *"I expected the largest number but got 1."*
 
 **Tutor response:**
-> **Diagnosis:** The code runs successfully, but `sort()` arranges numbers in ascending order by default, so `numbers[0]` is the smallest, not the largest.
-> **Question:** Print the full sorted list — in which direction does Python's `sort()` order numbers?
-> **Next Step:** Check whether `sort()` has a parameter that reverses the order.
+> Diagnosis: The code runs successfully, but `sort()` arranges numbers in ascending order by default, so `numbers[0]` is the smallest, not the largest.
+> Question: Print the full sorted list — in which direction does Python's `sort()` order numbers?
+> Next Step: Check whether `sort()` has a parameter that reverses the order.
 
 ---
 
 ## Known Limitations
 
-- `doc_search` covers 21 topics from a local dictionary, not the full Python docs.
+- `doc_search` covers 80+ topics from a local dictionary, not the full Python docs.
 - No session memory across page refreshes — history resets when Streamlit reruns.
-- `lint_code` silently returns an error if `ruff` is not installed.
-- Code is capped at 30 lines — longer programs are rejected.
-- The tutor replies can contain Markdown bold syntax (`**Diagnosis:**`) which renders in the UI but appears raw in the CLI.
+- `lint_code` returns a clear error message if `ruff` is not installed, but does not auto-install it.
+- Code is capped at 30 lines per the Week 4 spec — longer programs are rejected with a message suggesting they be split.
+- `_install_missing_packages` runs `pip install` for any import statement not in the standard library set. Package names are validated against a simple allowlist pattern before installation, but this is still an open trust boundary: a student (or anyone using a public deployment) could trigger installation of an arbitrary PyPI package by name. Acceptable for a local/personal tutor; for any public deployment this should be replaced with a fixed allowlist of approved packages.
+- The 80-topic `doc_search` dictionary is hand-curated and will drift out of date for newer Python features faster than a live `docs.python.org` query would.
 
 ## What I'd Improve Next (Week 5+)
 

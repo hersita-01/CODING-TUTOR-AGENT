@@ -23,6 +23,7 @@ import os
 import sys
 import json
 import re
+import time
 
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -34,9 +35,11 @@ load_dotenv()
 # -----------------------------------
 
 MAX_TOOL_CALLS  = 8
-MAX_CODE_LINES  = 300
+MAX_CODE_LINES  = 30          # Week 4 brief requires ≤30 lines per snippet
 TIMEOUT_SECONDS = 15
 GROQ_MODEL      = "llama-3.3-70b-versatile"
+MAX_RETRIES     = 2            # retry rate-limit/network errors (Week 3 pattern)
+RETRY_BACKOFF_S = 2
 
 # -----------------------------------
 # STDLIB SET  (never pip-install these)
@@ -61,7 +64,24 @@ STDLIB_MODULES = {
 
 
 # -----------------------------------
-# HELPER: detect input type
+# HELPER: extract line number from traceback
+# Reused pattern from Week 3 structured_tutor_response.py extract_line_number()
+# -----------------------------------
+
+def _extract_line_number(traceback_text: str) -> int:
+    """
+    Extract the last 'line N' reference from a Python traceback or
+    SyntaxError message. Returns 0 if no line number is found.
+    The LAST match is the innermost frame — the actual failing line.
+    """
+    if not traceback_text:
+        return 0
+    matches = re.findall(r"\bline\s+(\d+)", traceback_text)
+    return int(matches[-1]) if matches else 0
+
+
+# -----------------------------------
+# HELPER: classify input
 # -----------------------------------
 
 def _classify_input(text: str) -> str:
@@ -118,12 +138,27 @@ def _classify_input(text: str) -> str:
 # -----------------------------------
 
 def _install_missing_packages(code: str) -> list:
+    """
+    Auto-installs packages imported by student code that aren't in the
+    standard library. SAFETY NOTE: this runs `pip install <name>` for any
+    import statement found in student code. Package names are validated
+    against PyPI's naming rules before installation to reject shell
+    metacharacters or path traversal attempts disguised as package names.
+    This is documented as a known limitation in the README — for a
+    public-facing deployment, pin to an explicit allowlist instead.
+    """
     pattern = re.compile(
         r'^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)',
         re.MULTILINE
     )
     found    = set(re.findall(pattern, code))
     external = [p for p in found if p not in STDLIB_MODULES]
+
+    # Reject anything that isn't a valid, simple PyPI-style package name —
+    # blocks injection via crafted "import" lines such as
+    # "import os; subprocess.run(...)" being mistaken for a package name.
+    valid_name = re.compile(r'^[a-zA-Z0-9_\-\.]{1,100}$')
+    external   = [p for p in external if valid_name.match(p)]
 
     installed = []
     for pkg in external:
@@ -132,7 +167,7 @@ def _install_missing_packages(code: str) -> list:
         except ImportError:
             try:
                 subprocess.run(
-                    [sys.executable, "-m", "pip", "install", pkg, "-q"],
+                    [sys.executable, "-m", "pip", "install", "--", pkg, "-q"],
                     capture_output=True,
                     timeout=30
                 )
@@ -273,12 +308,19 @@ def run_python(code: str) -> dict:
         )
         os.remove(temp_path)
 
+        # Extract the failing line number from stderr so the tutor can
+        # point the student to the exact line, per the Week 4 brief
+        # requirement: "a single Socratic question that points the
+        # learner to the right line — not the fix."
+        line_number = _extract_line_number(result.stderr) if result.stderr else 0
+
         response = {
             "success":      True,
             "stdout":       result.stdout,
             "stderr":       result.stderr,
             "returncode":   result.returncode,
             "input_mocked": input_mocked,
+            "line_number":  line_number,
         }
         if note:
             response["note"] = note
@@ -519,6 +561,8 @@ TOOL_SCHEMAS = [
                 "Execute Python code in a subprocess sandbox. "
                 "Automatically mocks input() calls so interactive programs run without hanging. "
                 "Auto-installs missing pip packages. Handles raw dicts and JSON. "
+                "Returns a 'line_number' field extracted from any traceback — "
+                "always cite this exact line number when diagnosing an error. "
                 f"Max {MAX_CODE_LINES} lines. ALWAYS call this first when student submits code."
             ),
             "parameters": {
@@ -604,21 +648,29 @@ Your goal is to help students UNDERSTAND bugs — never to write fixes for them.
 
 RULES:
 1. When a student submits code, ALWAYS call run_python first to see actual runtime behaviour.
-2. If input() calls were mocked, explain that the program ran with simulated input values and focus on the logic/bugs.
-3. If the student pasted a dict or JSON, the tool analysed its structure — explain what you see.
-4. NEVER reveal the corrected code. Use Socratic questions to guide the student.
-5. Structure every reply EXACTLY like this:
+2. The run_python tool returns a "line_number" field when there is an error.
+   ALWAYS cite that exact line number in your Diagnosis — never give a vague
+   location like "somewhere in your code." If line_number is 0, describe the
+   failing operation precisely instead (e.g. "the call to int() on the second line").
+3. If input() calls were mocked, explain that the program ran with simulated input values and focus on the logic/bugs.
+4. If the student pasted a dict or JSON, the tool analysed its structure — explain what you see.
+5. NEVER reveal the corrected code. Use exactly ONE Socratic question per reply — never more than one question mark's worth of guidance.
+6. Structure every reply EXACTLY like this, with no extra sections and no markdown headers beyond the three labels below:
 
-   **Diagnosis:** (one sentence — what is wrong or what the output shows)
-   **Question:** (one guiding question that nudges the student toward the issue)
-   **Next Step:** (one small concrete action to try)
+Diagnosis: (one sentence — what is wrong, citing the exact line number)
+Question: (one guiding question that nudges the student toward the issue)
+Next Step: (one small concrete action to try)
 
-6. If code runs but output is wrong, ask what they expected vs what they got.
-7. If the student asks for the direct answer or mentions graded work, redirect with a question.
-8. Use doc_search when the student seems confused about a concept.
-9. Use lint_code when code runs correctly but quality/style could be improved.
-10. Tone: warm, encouraging, never condescending. Be transparent that you are an AI tutor.
-11. Maximum 8 tool calls per turn."""
+7. If code runs but the student says the output is wrong or "not what I expected,"
+   ask them directly what they expected, then compare it with what run_python actually produced.
+8. If the student asks for the direct answer or mentions graded work, redirect with a question.
+9. Use doc_search when the student seems confused about a concept.
+10. Use lint_code when code runs correctly but quality/style could be improved.
+11. Tone: warm, encouraging, never condescending. Be transparent that you are an AI tutor.
+12. Maximum 8 tool calls per turn.
+13. Use plain text for the three labels (Diagnosis / Question / Next Step) —
+    do not wrap them in ** markdown bold **, since this renders incorrectly in
+    the CLI. The Streamlit UI applies its own bold styling separately."""
 
 
 # -----------------------------------
@@ -630,8 +682,16 @@ def run_tutor_agent(
     conversation_history: list = None
 ) -> tuple:
 
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        return (
+            "Configuration error: GROQ_API_KEY is missing from your .env file. "
+            "Create a .env file in the project root with:\nGROQ_API_KEY=your_key_here",
+            conversation_history or []
+        )
+
     client = OpenAI(
-        api_key=os.environ.get("GROQ_API_KEY"),
+        api_key=api_key,
         base_url="https://api.groq.com/openai/v1"
     )
 
@@ -648,12 +708,50 @@ def run_tutor_agent(
     final_reply     = ""
 
     while True:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            max_tokens=1500,
-            tools=TOOL_SCHEMAS,
-            messages=messages
-        )
+        # Retry wrapper for transient failures (Week 3 robust_tool_loop pattern):
+        # auth and bad-model errors fail identically every time, so they are
+        # NOT retried. Rate limits and network errors get retried with backoff.
+        response   = None
+        last_error = ""
+
+        for attempt in range(1, MAX_RETRIES + 2):
+            try:
+                response = client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    max_tokens=1500,
+                    tools=TOOL_SCHEMAS,
+                    messages=messages
+                )
+                break
+
+            except Exception as exc:
+                exc_str = str(exc).lower()
+
+                if "401" in exc_str or "authentication" in exc_str or "api key" in exc_str:
+                    return (
+                        "Authentication failed — check your GROQ_API_KEY in .env.",
+                        messages[1:]
+                    )
+
+                if "model" in exc_str and ("not found" in exc_str or "deprecated" in exc_str):
+                    return (
+                        f"Model '{GROQ_MODEL}' is unavailable. Update GROQ_MODEL in config.",
+                        messages[1:]
+                    )
+
+                is_retryable = (
+                    "429" in exc_str or "rate limit" in exc_str
+                    or any(t in exc_str for t in ("connection", "timeout", "network"))
+                )
+                if is_retryable and attempt <= MAX_RETRIES:
+                    time.sleep(RETRY_BACKOFF_S * attempt)
+                    last_error = str(exc)
+                    continue
+
+                return (f"API call failed: {exc}", messages[1:])
+
+        if response is None:
+            return (f"API call failed after retries: {last_error}", messages[1:])
 
         choice  = response.choices[0]
         message = choice.message
