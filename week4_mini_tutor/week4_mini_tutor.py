@@ -320,7 +320,12 @@ def run_python(code: str) -> dict:
             text=True,
             timeout=TIMEOUT_SECONDS
         )
+        os.remove(temp_path)
 
+        # Extract the failing line number from stderr so the tutor can
+        # point the student to the exact line, per the Week 4 brief
+        # requirement: "a single Socratic question that points the
+        # learner to the right line — not the fix."
         line_number = _extract_line_number(result.stderr) if result.stderr else 0
 
         response = {
@@ -339,6 +344,11 @@ def run_python(code: str) -> dict:
         return response
 
     except subprocess.TimeoutExpired:
+        if temp_path:
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
         return {
             "success": False,
             "error": (
@@ -351,12 +361,6 @@ def run_python(code: str) -> dict:
     except Exception as e:
         return {"success": False, "error": f"Execution environment error: {str(e)}"}
 
-    finally:                          # ← always runs, cleans up in every case
-        if temp_path:
-            try:
-                os.remove(temp_path)
-            except Exception:
-                pass
 
 # -----------------------------------
 # TOOL 2 : LINT CODE
