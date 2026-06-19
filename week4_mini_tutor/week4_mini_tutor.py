@@ -263,6 +263,20 @@ def run_python(code: str) -> dict:
     if not code or not code.strip():
         return {"success": False, "error": "No Python code was provided."}
 
+    # Pre-flight: exec() and eval() cause Groq to generate malformed tool call
+    # syntax (it merges the function name and arguments incorrectly).
+    # Block them here with a clear message before any API call is attempted.
+    if re.search(r'\b(exec|eval)\s*\(', code):
+        return {
+            "success":    False,
+            "blocked":    True,
+            "error": (
+                "exec() and eval() are not supported in this tutor sandbox. "
+                "They execute arbitrary code dynamically which cannot be safely "
+                "analysed. Try rewriting the code without exec/eval."
+            )
+        }
+
     # Detect input type
     kind = _classify_input(code)
 
@@ -558,22 +572,29 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "run_python",
             "description": (
-                "Execute Python code in a subprocess sandbox. "
-                "Automatically mocks input() calls so interactive programs run without hanging. "
-                "Auto-installs missing pip packages. Handles raw dicts and JSON. "
-                "Returns a 'line_number' field extracted from any traceback — "
-                "always cite this exact line number when diagnosing an error. "
-                f"Max {MAX_CODE_LINES} lines. ALWAYS call this first when student submits code."
+                "Execute a Python code snippet and return its output. "
+                "Pass the ENTIRE code as the single 'code' string — "
+                "do NOT pass any other arguments. "
+                "Interactive programs are handled automatically. "
+                "Missing packages are installed automatically. "
+                "Returns stdout, stderr, and the failing line number if there is an error. "
+                f"Maximum {MAX_CODE_LINES} lines. "
+                "ALWAYS call this first when the student submits code."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "code": {
                         "type": "string",
-                        "description": "The complete Python code to execute."
+                        "description": (
+                            "The complete Python code to run, as a single string. "
+                            "This is the ONLY parameter — never pass 'input', "
+                            "'stdin', 'timeout', or any other argument."
+                        )
                     }
                 },
-                "required": ["code"]
+                "required": ["code"],
+                "additionalProperties": False
             }
         }
     },
@@ -626,13 +647,45 @@ TOOL_SCHEMAS = [
 # -----------------------------------
 
 def execute_tool(tool_name: str, tool_input: dict) -> str:
+    """
+    Route a tool call to the correct implementation.
+
+    Two extra defences added here:
+      1. If tool_input is not a plain dict (e.g. the model passed a list or
+         a string), convert/reject it cleanly instead of crashing.
+      2. Only pass recognised argument names to each tool — extra keys that
+         the model invented (like 'input', 'stdin', 'timeout') are silently
+         dropped so they never cause a TypeError.
+    """
+    # Normalise: if model passed a list [ {arg1}, {arg2} ] merge into one dict
+    if isinstance(tool_input, list):
+        merged = {}
+        for item in tool_input:
+            if isinstance(item, dict):
+                merged.update(item)
+        tool_input = merged
+
+    if not isinstance(tool_input, dict):
+        tool_input = {}
+
     if tool_name not in TOOL_FUNCTIONS:
         return json.dumps({
             "success": False,
-            "error": f"Unknown tool '{tool_name}'. Available: {list(TOOL_FUNCTIONS.keys())}"
+            "error": (
+                f"Unknown tool '{tool_name}'. "
+                f"Available tools: {list(TOOL_FUNCTIONS.keys())}"
+            )
         })
+
+    # Drop any extra arguments the model invented that the function
+    # doesn't accept — prevents TypeErrors from extra keys like 'input'
+    import inspect
+    fn     = TOOL_FUNCTIONS[tool_name]
+    params = set(inspect.signature(fn).parameters.keys())
+    clean  = {k: v for k, v in tool_input.items() if k in params}
+
     try:
-        return json.dumps(TOOL_FUNCTIONS[tool_name](**tool_input))
+        return json.dumps(fn(**clean))
     except TypeError as e:
         return json.dumps({"success": False, "error": f"Wrong arguments: {str(e)}"})
     except Exception as e:
@@ -646,31 +699,30 @@ def execute_tool(tool_name: str, tool_input: dict) -> str:
 SYSTEM_PROMPT = """You are Mini-Tutor, a patient AI coding tutor for Python learners.
 Your goal is to help students UNDERSTAND bugs — never to write fixes for them.
 
-RULES:
-1. When a student submits code, ALWAYS call run_python first to see actual runtime behaviour.
-2. The run_python tool returns a "line_number" field when there is an error.
-   ALWAYS cite that exact line number in your Diagnosis — never give a vague
-   location like "somewhere in your code." If line_number is 0, describe the
-   failing operation precisely instead (e.g. "the call to int() on the second line").
-3. If input() calls were mocked, explain that the program ran with simulated input values and focus on the logic/bugs.
-4. If the student pasted a dict or JSON, the tool analysed its structure — explain what you see.
-5. NEVER reveal the corrected code. Use exactly ONE Socratic question per reply — never more than one question mark's worth of guidance.
-6. Structure every reply EXACTLY like this, with no extra sections and no markdown headers beyond the three labels below:
+TOOL CALLING RULES — READ CAREFULLY:
+- run_python takes EXACTLY ONE argument: "code". Nothing else.
+- Never pass "input", "stdin", "timeout", or any other argument to run_python.
+- Never pass a list of arguments — always pass a single JSON object: {"code": "..."}
+- exec() and eval() are blocked in the sandbox — if student code contains them,
+  explain why they are unavailable and ask the student to rewrite without them.
+
+TUTOR RULES:
+1. When a student submits code, ALWAYS call run_python first.
+2. The run_python result includes a "line_number" field — always cite it in Diagnosis.
+3. If input() calls were present, they were auto-mocked — mention this briefly.
+4. NEVER reveal the corrected code. One Socratic question per reply only.
+5. Structure every reply EXACTLY like this:
 
 Diagnosis: (one sentence — what is wrong, citing the exact line number)
-Question: (one guiding question that nudges the student toward the issue)
-Next Step: (one small concrete action to try)
+Question: (one guiding question pointing toward the issue)
+Next Step: (one small concrete action)
 
-7. If code runs but the student says the output is wrong or "not what I expected,"
-   ask them directly what they expected, then compare it with what run_python actually produced.
-8. If the student asks for the direct answer or mentions graded work, redirect with a question.
-9. Use doc_search when the student seems confused about a concept.
-10. Use lint_code when code runs correctly but quality/style could be improved.
-11. Tone: warm, encouraging, never condescending. Be transparent that you are an AI tutor.
-12. Maximum 8 tool calls per turn.
-13. Use plain text for the three labels (Diagnosis / Question / Next Step) —
-    do not wrap them in ** markdown bold **, since this renders incorrectly in
-    the CLI. The Streamlit UI applies its own bold styling separately."""
+6. If code runs but output is wrong, ask what the student expected vs what ran.
+7. Use doc_search when student is confused about a concept.
+8. Use lint_code when code runs but quality could be improved.
+9. Tone: warm, encouraging, never condescending.
+10. Maximum 8 tool calls per turn.
+11. Use plain text labels — no ** markdown bold **."""
 
 
 # -----------------------------------
@@ -736,6 +788,17 @@ def run_tutor_agent(
                 if "model" in exc_str and ("not found" in exc_str or "deprecated" in exc_str):
                     return (
                         f"Model '{GROQ_MODEL}' is unavailable. Update GROQ_MODEL in config.",
+                        messages[1:]
+                    )
+
+                # 400 tool_use_failed — the model generated a malformed tool call.
+                # Convert to a friendly message instead of showing raw API errors.
+                if "400" in exc_str or "tool_use_failed" in exc_str or "tool call validation" in exc_str:
+                    return (
+                        "I had trouble processing that input. "
+                        "This sometimes happens with code containing special characters "
+                        "like exec(), eval(), or complex escape sequences.\n\n"
+                        "Try rephrasing your question, or paste just the relevant snippet.",
                         messages[1:]
                     )
 

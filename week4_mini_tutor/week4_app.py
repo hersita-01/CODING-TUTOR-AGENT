@@ -1,6 +1,6 @@
 # -----------------------------------
 # WEEK 4 - MINI-TUTOR v1
-# STREAMLIT UI  —  iOS design language
+# STREAMLIT UI  —  Teal-to-Blue Gradient
 # -----------------------------------
 #
 # Run with:   streamlit run week4_app.py
@@ -26,266 +26,361 @@ st.set_page_config(
 )
 
 # -----------------------------------
-# iOS-STYLE CSS
-# Principles:
-#   • Pure white background — no gradients, no gloss
-#   • -apple-system font stack (SF Pro on Apple, Segoe on Windows, etc.)
-#   • 8pt grid spacing
-#   • Hairline 1px borders in #E5E5EA (iOS separator colour)
-#   • Rounded corners: 12px for cards, 10px for inputs
-#   • Blue accent: #007AFF (iOS system blue)
-#   • Secondary text: #8E8E93 (iOS secondary label)
-#   • Destructive / error red: #FF3B30
-#   • Success green: #34C759
-#   • No box-shadows beyond a single subtle 0 1px 3px
+# DESIGN TOKENS
+#
+# Background gradient: dark teal #0D1F2D → deep blue #0A0F1E
+# Surface cards:       semi-transparent white overlays (glassmorphism lite)
+# Accent:              bright teal #00C9B1  + blue highlight #4A9EFF
+# Text:                #FFFFFF primary, #A8C4D0 secondary (always readable)
+# Student bubble:      teal-tinted dark  #0F2A38 with teal border
+# Tutor bubble:        blue-tinted dark  #0D1A30 with blue border
+# Labels:              Diagnosis=teal, Question=amber, Next Step=violet
 # -----------------------------------
 
 st.markdown("""
 <style>
-/* ── Reset & base ── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+    --grad-start:   #0D1F2D;
+    --grad-end:     #0A0F1E;
+    --surface:      rgba(255,255,255,0.06);
+    --surface-hover:rgba(255,255,255,0.10);
+    --border:       rgba(255,255,255,0.10);
+    --border-teal:  rgba(0,201,177,0.40);
+    --border-blue:  rgba(74,158,255,0.40);
+    --text:         #FFFFFF;
+    --text-sub:     #A8C4D0;
+    --teal:         #00C9B1;
+    --blue:         #4A9EFF;
+    --amber:        #F5C26B;
+    --violet:       #C792EA;
+    --danger:       #FF6B6B;
+}
+
+/* ── Base & gradient canvas ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html, body, [class*="css"] {
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
-                 "Segoe UI", "Helvetica Neue", sans-serif;
-    font-size: 15px;
-    background: #FFFFFF;
-    color: #1C1C1E;
+html, body, .stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stHeader"],
+.main {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: linear-gradient(160deg, var(--grad-start) 0%, var(--grad-end) 100%) !important;
+    background-attachment: fixed !important;
+    color: var(--text) !important;
+    min-height: 100vh;
     -webkit-font-smoothing: antialiased;
 }
 
-/* ── Hide Streamlit chrome ── */
 #MainMenu, footer, header { visibility: hidden; }
+
 .block-container {
     padding: 0 !important;
-    max-width: 680px !important;
+    max-width: 740px !important;
     margin: 0 auto !important;
 }
 
-/* ── Top nav bar (iOS-style) ── */
+/* ── Nav bar — frosted glass over gradient ── */
 .nav-bar {
     position: sticky;
     top: 0;
     z-index: 100;
-    background: rgba(255,255,255,0.92);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid #E5E5EA;
-    padding: 14px 20px 12px;
+    background: rgba(13,31,45,0.80);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-bottom: 1px solid var(--border);
+    padding: 15px 24px 13px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
 }
-.nav-bar .nav-icon {
-    font-size: 22px;
-    line-height: 1;
-}
+.nav-bar .nav-icon { font-size: 24px; line-height: 1; }
 .nav-bar .nav-title {
-    font-size: 17px;
-    font-weight: 600;
+    font-size: 18px;
+    font-weight: 700;
     letter-spacing: -0.3px;
-    color: #1C1C1E;
+    color: var(--text);
+    background: linear-gradient(90deg, var(--teal), var(--blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.nav-bar .nav-badge {
+    margin-left: 8px;
+    background: rgba(0,201,177,0.15);
+    border: 1px solid var(--border-teal);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--teal);
+    letter-spacing: 0.3px;
 }
 .nav-bar .nav-subtitle {
     font-size: 12px;
-    color: #8E8E93;
+    color: var(--text-sub);
     margin-left: auto;
-    font-weight: 400;
+    font-weight: 500;
+    font-family: 'JetBrains Mono', monospace;
 }
 
-/* ── Page body padding ── */
-.page-body { padding: 0 20px 100px; }
+/* ── Page body ── */
+.page-body { padding: 0 20px 120px; }
 
-/* ── Section label (like iOS grouped table headers) ── */
 .section-label {
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 0.4px;
-    color: #8E8E93;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--text-sub);
     text-transform: uppercase;
-    padding: 20px 4px 6px;
-}
-
-/* ── Message bubbles ── */
-.bubble-wrap { margin-bottom: 2px; }
-
-.bubble-student {
-    background: #F2F2F7;
-    border-radius: 12px 12px 4px 12px;
-    padding: 12px 14px;
-    margin: 8px 0 8px 48px;
-    font-family: "SF Mono", "Fira Code", "Menlo", "Monaco", monospace;
-    font-size: 12.5px;
-    line-height: 1.6;
-    color: #1C1C1E;
-    white-space: pre-wrap;
-    word-break: break-word;
-    border: 1px solid #E5E5EA;
-}
-
-.bubble-label-student {
-    font-size: 11px;
-    color: #8E8E93;
-    text-align: right;
-    margin: 4px 4px 0;
-    font-weight: 500;
-}
-
-.bubble-tutor {
-    background: #FFFFFF;
-    border-radius: 12px 12px 12px 4px;
-    padding: 14px 16px;
-    margin: 8px 48px 8px 0;
-    color: #1C1C1E;
-    font-size: 14.5px;
-    line-height: 1.65;
-    border: 1px solid #E5E5EA;
-}
-
-.bubble-label-tutor {
-    font-size: 11px;
-    color: #007AFF;
-    margin: 4px 4px 0;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-/* Bold Diagnosis / Question / Next Step labels */
-.bubble-tutor strong {
-    color: #007AFF;
-    font-weight: 600;
+    padding: 24px 4px 10px;
 }
 
 /* ── Empty state ── */
 .empty-state {
     text-align: center;
-    padding: 56px 24px 32px;
-    color: #8E8E93;
+    padding: 72px 28px 40px;
 }
-.empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
+.empty-state .empty-icon {
+    font-size: 52px;
+    margin-bottom: 18px;
+    display: block;
+}
 .empty-state .empty-title {
-    font-size: 17px;
-    font-weight: 600;
-    color: #1C1C1E;
-    margin-bottom: 6px;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 10px;
+    letter-spacing: -0.3px;
 }
 .empty-state .empty-body {
-    font-size: 14px;
-    line-height: 1.5;
-    color: #8E8E93;
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--text-sub);
+    max-width: 380px;
+    margin: 0 auto 28px;
+}
+.empty-state .feature-pills {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+.feature-pill {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 12.5px;
+    color: var(--text-sub);
+    font-weight: 500;
 }
 
-/* ── Input area ── */
-.input-container {
+/* ── Message bubbles ── */
+.bubble-wrap { margin-bottom: 6px; }
+
+/* Student bubble — teal tint */
+.bubble-student {
+    background: rgba(0,201,177,0.08);
+    border: 1px solid var(--border-teal);
+    border-radius: 14px 14px 4px 14px;
+    padding: 14px 16px;
+    margin: 6px 0 6px 52px;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #D4F5F0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.bubble-label-student {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--teal);
+    text-align: right;
+    margin: 4px 6px 2px;
+    text-transform: uppercase;
+}
+
+/* Tutor bubble — blue tint */
+.bubble-tutor {
+    background: rgba(74,158,255,0.07);
+    border: 1px solid var(--border-blue);
+    border-radius: 14px 14px 14px 4px;
+    padding: 16px 20px;
+    margin: 6px 52px 6px 0;
+    color: #E8F2FF;
+    font-size: 15px;
+    line-height: 1.75;
+}
+.bubble-label-tutor {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--blue);
+    margin: 4px 4px 2px 0;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* Colour the three structured reply labels inline */
+.bubble-tutor .label-diagnosis { color: var(--teal);   font-weight: 700; }
+.bubble-tutor .label-question  { color: var(--amber);  font-weight: 700; }
+.bubble-tutor .label-nextstep  { color: var(--violet); font-weight: 700; }
+
+/* ── Divider between turns ── */
+.turn-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 16px 0;
+    opacity: 0.5;
+}
+
+/* ── Fixed input bar ── */
+.input-bar {
     position: fixed;
     bottom: 0;
     left: 50%;
     transform: translateX(-50%);
     width: 100%;
-    max-width: 680px;
-    background: rgba(255,255,255,0.95);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-top: 1px solid #E5E5EA;
-    padding: 12px 16px 20px;
+    max-width: 740px;
+    background: rgba(13,31,45,0.90);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border-top: 1px solid var(--border);
+    padding: 14px 18px 22px;
 }
 
-/* Override Streamlit textarea */
+/* Streamlit textarea — fully recoloured */
+[data-testid="stForm"] {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
 .stTextArea textarea {
-    font-family: "SF Mono", "Fira Code", "Menlo", monospace !important;
-    font-size: 13px !important;
-    line-height: 1.55 !important;
-    background: #F2F2F7 !important;
-    color: #1C1C1E !important;
-    border: 1px solid #E5E5EA !important;
-    border-radius: 10px !important;
-    padding: 10px 12px !important;
+    font-family: 'JetBrains Mono', 'SF Mono', monospace !important;
+    font-size: 13.5px !important;
+    line-height: 1.65 !important;
+    background: rgba(255,255,255,0.06) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    padding: 13px 15px !important;
     box-shadow: none !important;
     resize: none !important;
+    caret-color: var(--teal) !important;
+    transition: border-color 0.2s ease !important;
+}
+.stTextArea textarea::placeholder {
+    color: rgba(168,196,208,0.55) !important;
 }
 .stTextArea textarea:focus {
-    border-color: #007AFF !important;
-    box-shadow: 0 0 0 3px rgba(0,122,255,0.12) !important;
+    border-color: var(--teal) !important;
+    box-shadow: 0 0 0 3px rgba(0,201,177,0.15) !important;
     outline: none !important;
+    background: rgba(255,255,255,0.09) !important;
+}
+.stTextArea label { display: none !important; }
+
+/* Send button — teal-to-blue gradient */
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, var(--teal) 0%, var(--blue) 100%) !important;
+    color: #05131E !important;
+    border: none !important;
+    border-radius: 12px !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    padding: 11px 22px !important;
+    letter-spacing: -0.1px !important;
+    box-shadow: 0 4px 18px rgba(0,201,177,0.30) !important;
+    transition: opacity 0.15s ease, transform 0.1s ease !important;
+}
+.stButton > button[kind="primary"]:hover {
+    opacity: 0.88 !important;
+    box-shadow: 0 6px 24px rgba(0,201,177,0.40) !important;
+}
+.stButton > button[kind="primary"]:active {
+    transform: scale(0.97) !important;
 }
 
-/* Primary button → iOS blue pill */
-.stButton > button[kind="primary"] {
-    background: #007AFF !important;
-    color: #FFFFFF !important;
-    border: none !important;
+/* Ghost / secondary button */
+.stButton > button:not([kind="primary"]) {
+    background: transparent !important;
+    color: var(--teal) !important;
+    border: 1px solid var(--border-teal) !important;
     border-radius: 10px !important;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif !important;
-    font-size: 15px !important;
+    font-size: 13.5px !important;
     font-weight: 600 !important;
-    padding: 10px 20px !important;
-    letter-spacing: -0.2px !important;
+    padding: 9px 16px !important;
     box-shadow: none !important;
     transition: background 0.15s ease !important;
 }
-.stButton > button[kind="primary"]:hover {
-    background: #0066CC !important;
-}
-.stButton > button[kind="primary"]:active {
-    background: #004EA6 !important;
-}
-
-/* Secondary / ghost button */
-.stButton > button:not([kind="primary"]) {
-    background: transparent !important;
-    color: #007AFF !important;
-    border: 1px solid #007AFF !important;
-    border-radius: 10px !important;
-    font-size: 14px !important;
-    font-weight: 500 !important;
-    padding: 8px 16px !important;
-    box-shadow: none !important;
-}
 .stButton > button:not([kind="primary"]):hover {
-    background: #F0F7FF !important;
+    background: rgba(0,201,177,0.10) !important;
 }
 
-/* Limit hint */
 .limit-hint {
     font-size: 11px;
-    color: #8E8E93;
+    color: var(--text-sub);
     text-align: right;
-    margin-top: 4px;
+    margin-top: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    opacity: 0.7;
 }
 
 /* Warning pill */
 .warning-pill {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    background: #FFF3E0;
-    border: 1px solid #FFCC80;
-    border-radius: 8px;
-    padding: 6px 12px;
+    gap: 6px;
+    background: rgba(245,194,107,0.12);
+    border: 1px solid rgba(245,194,107,0.40);
+    border-radius: 10px;
+    padding: 8px 14px;
     font-size: 13px;
-    color: #E65100;
+    color: var(--amber);
     margin: 8px 0;
 }
 
-/* Thinking spinner override */
-.stSpinner > div {
-    border-top-color: #007AFF !important;
-}
+/* Spinner */
+.stSpinner > div { border-top-color: var(--teal) !important; }
+.stSpinner p { color: var(--text-sub) !important; }
 
-/* Sidebar iOS-style */
+/* ── Sidebar — teal-tinted dark ── */
 [data-testid="stSidebar"] {
-    background: #F2F2F7 !important;
-    border-right: 1px solid #E5E5EA !important;
+    background: linear-gradient(180deg, #0B1E2C 0%, #08111E 100%) !important;
+    border-right: 1px solid var(--border) !important;
 }
-[data-testid="stSidebar"] .stMarkdown {
-    font-size: 14px;
-    color: #1C1C1E;
+[data-testid="stSidebar"] * { color: var(--text) !important; }
+[data-testid="stSidebar"] .stMarkdown p,
+[data-testid="stSidebar"] .stMarkdown li {
+    font-size: 13.5px;
+    color: var(--text-sub) !important;
+    line-height: 1.65;
 }
+[data-testid="stSidebar"] .stMarkdown h3 {
+    color: var(--text) !important;
+    font-size: 16px;
+    font-weight: 700;
+}
+[data-testid="stSidebar"] .stMarkdown strong { color: var(--teal) !important; }
+[data-testid="stSidebar"] code {
+    background: rgba(0,201,177,0.10) !important;
+    color: var(--teal) !important;
+    padding: 2px 6px;
+    border-radius: 5px;
+    font-size: 12.5px;
+}
+[data-testid="stSidebar"] hr { border-color: var(--border) !important; }
 
-/* Hide label on text area */
-.stTextArea label { display: none !important; }
+/* Markdown inside chat */
+.stMarkdown, .stMarkdown p, .stMarkdown li { color: var(--text) !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -306,13 +401,34 @@ st.markdown("""
 <div class="nav-bar">
   <span class="nav-icon">🐍</span>
   <span class="nav-title">Mini-Tutor</span>
+  <span class="nav-badge">v1</span>
   <span class="nav-subtitle">AI Coding Tutor</span>
 </div>
 """, unsafe_allow_html=True)
 
 
 # -----------------------------------
-# CONVERSATION
+# HELPER — colour the three structured labels in tutor replies
+# Wraps "Diagnosis:" / "Question:" / "Next Step:" in colour spans
+# so they stand out from body text visually.
+# -----------------------------------
+
+def _colour_labels(text: str) -> str:
+    import re, html as html_lib
+    safe = html_lib.escape(text)
+    safe = re.sub(r'(Diagnosis:)',
+                  r'<span class="label-diagnosis">\1</span>', safe)
+    safe = re.sub(r'(Question:)',
+                  r'<span class="label-question">\1</span>', safe)
+    safe = re.sub(r'(Next Step:)',
+                  r'<span class="label-nextstep">\1</span>', safe)
+    # Restore line breaks
+    safe = safe.replace('\n', '<br>')
+    return safe
+
+
+# -----------------------------------
+# CONVERSATION AREA
 # -----------------------------------
 
 st.markdown('<div class="page-body">', unsafe_allow_html=True)
@@ -320,29 +436,43 @@ st.markdown('<div class="page-body">', unsafe_allow_html=True)
 if not st.session_state.display_turns:
     st.markdown("""
     <div class="empty-state">
-      <div class="empty-icon">💬</div>
+      <span class="empty-icon">💬</span>
       <div class="empty-title">Paste your Python code</div>
       <div class="empty-body">
-        The tutor will run it, find the bug, and guide you<br>
+        The tutor runs it, finds the bug, and guides you<br>
         to the fix with a question — not just the answer.
+      </div>
+      <div class="feature-pills">
+        <span class="feature-pill">🔧 Runs your code</span>
+        <span class="feature-pill">🔍 Lints for issues</span>
+        <span class="feature-pill">📖 Explains concepts</span>
+        <span class="feature-pill">🎓 Socratic questions</span>
       </div>
     </div>
     """, unsafe_allow_html=True)
+
 else:
     st.markdown('<div class="section-label">Conversation</div>', unsafe_allow_html=True)
-    for turn in st.session_state.display_turns:
+
+    for i, turn in enumerate(st.session_state.display_turns):
+        if i > 0:
+            st.markdown('<hr class="turn-divider">', unsafe_allow_html=True)
+
         if turn["role"] == "student":
+            import html as html_lib
+            safe_content = html_lib.escape(turn["content"])
             st.markdown(f"""
             <div class="bubble-wrap">
               <div class="bubble-label-student">You</div>
-              <div class="bubble-student">{turn["content"]}</div>
+              <div class="bubble-student">{safe_content}</div>
             </div>
             """, unsafe_allow_html=True)
         else:
+            coloured = _colour_labels(turn["content"])
             st.markdown(f"""
             <div class="bubble-wrap">
               <div class="bubble-label-tutor">🎓 Tutor</div>
-              <div class="bubble-tutor">{turn["content"]}</div>
+              <div class="bubble-tutor">{coloured}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -362,7 +492,7 @@ with st.form("input_form", clear_on_submit=True):
             "numbers = [1, 2, 3]\n"
             "print(numbers[5])"
         ),
-        height=130,
+        height=120,
         label_visibility="collapsed"
     )
 
@@ -373,9 +503,8 @@ with st.form("input_form", clear_on_submit=True):
             f'<div class="limit-hint">Max {MAX_CODE_LINES} lines · 8 tool calls/turn · packages auto-installed</div>',
             unsafe_allow_html=True
         )
-
     with col_btn:
-        submitted = st.form_submit_button("Send", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("Send →", type="primary", use_container_width=True)
 
 
 # -----------------------------------
@@ -399,8 +528,9 @@ if submitted and user_input.strip():
 
         except Exception as e:
             reply = (
-                f"⚠️ Error: {str(e)}\n\n"
-                "Make sure `GROQ_API_KEY` is set in your `.env` file and required packages are installed."
+                f"Error: {str(e)}\n\n"
+                "Make sure GROQ_API_KEY is set in your .env file "
+                "and required packages are installed."
             )
 
     st.session_state.display_turns.append({
