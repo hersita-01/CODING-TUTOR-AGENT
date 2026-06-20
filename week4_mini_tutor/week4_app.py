@@ -413,8 +413,26 @@ st.markdown("""
 # so they stand out from body text visually.
 # -----------------------------------
 
+def _strip_tool_traces(text: str) -> str:
+    """Remove any <function/tool_name(...)> lines the model leaks into its reply.
+
+    The agent sometimes includes its own tool-call trace in the assistant
+    content string. These are internal scaffolding and must never be shown
+    to the student.
+    """
+    import re
+    # Matches the full line: <function/run_python({...})> or </function>
+    text = re.sub(r'</?function[^>]*>', '', text)
+    # Also strip bare tool-result JSON blocks if they sneak through
+    text = re.sub(r'\{"success".*?\}', '', text, flags=re.DOTALL)
+    # Collapse runs of blank lines left behind
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
 def _colour_labels(text: str) -> str:
     import re, html as html_lib
+    text = _strip_tool_traces(text)
     safe = html_lib.escape(text)
     safe = re.sub(r'(Diagnosis:)',
                   r'<span class="label-diagnosis">\1</span>', safe)
