@@ -7,8 +7,7 @@
 #
 # Week 2  safe_python_runner.py
 #   └─ run_python_safely()     ← execution sandbox (AST security, timeout,
-#   └─ find_forbidden_operation()   memory limit, subprocess isolation)
-#   └─ RunResult               ← structured result object
+#   └─ RunResult               ← memory limit, subprocess isolation)
 #
 # Week 3  tool_dispatcher.py
 #   └─ dispatch()              ← routes lint_code and doc_search tool calls
@@ -18,9 +17,9 @@
 #                                 then calls run_python_safely()
 #   └─ lint_code()             ← delegates to Week 3 dispatch("lint_code")
 #   └─ doc_search()            ← delegates to Week 3 dispatch("doc_search")
-#   └─ run_tutor_agent()       ← ReAct loop (unchanged)
+#   └─ run_tutor_agent()       ← ReAct loop
 #
-# What this file no longer reimplements:
+# What this file does NOT reimplement:
 #   ✗ AST security visitor           → Week 2 safe_python_runner.py
 #   ✗ Subprocess sandbox             → Week 2 safe_python_runner.py
 #   ✗ Memory limit                   → Week 2 safe_python_runner.py
@@ -31,17 +30,26 @@
 #
 # Requires:  pip install openai python-dotenv ruff
 #            GROQ_API_KEY in .env
-#            safe_python_runner.py in same folder or day3-socratic/
-#            tool_dispatcher.py   in same folder or day3-tool-loop/
+#            safe_python_runner.py in same folder or week2-prompt-engineering/day3-socratic/
+#            tool_dispatcher.py   in same folder or week3-tool-use/day3-tool-loop/
 # -----------------------------------
 
+
+# ============================================================
+# IMPORTS
+# ============================================================
+
+import inspect
 import json
+import logging
 import os
 import re
 import subprocess
 import sys
 import time
+import urllib.parse
 from pathlib import Path
+from typing import Any, TypedDict
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -49,22 +57,50 @@ from openai import OpenAI
 load_dotenv()
 
 
-# -----------------------------------
-# CROSS-FOLDER IMPORTS
-# Supports any working directory — same pattern used in Week 3 files.
-# -----------------------------------
+# ============================================================
+# LOGGING
+# Internal diagnostics only — user-facing CLI output uses print().
+# ============================================================
+
+logging.basicConfig(
+    level=logging.WARNING,
+    format="[%(levelname)s] %(name)s: %(message)s",
+)
+log = logging.getLogger("week4_mini_tutor")
+
+
+# ============================================================
+# CONFIGURATION  (all constants live in config.py)
+# ============================================================
+
+from config import (
+    GROQ_MODEL,
+    MAX_CODE_LINES,
+    MAX_RETRIES,
+    MAX_TOOL_CALLS,
+    RETRY_BACKOFF_S,
+    TIMEOUT_SECONDS,
+)
+
+
+# ============================================================
+# PATH SETUP — cross-folder imports
+# Supports any working directory; same pattern used in Week 3 files.
+# ============================================================
 
 def _add_to_path(candidates: list[Path]) -> None:
-    for c in candidates:
-        if c.exists() and str(c) not in sys.path:
-            sys.path.insert(0, str(c))
+    """Prepend existing directories to sys.path (once each)."""
+    for candidate in candidates:
+        if candidate.exists() and str(candidate) not in sys.path:
+            sys.path.insert(0, str(candidate))
+
 
 _here = Path(__file__).resolve().parent   # CODING-TUTOR-AGENT/week4_mini_tutor/
 _root = _here.parent                      # CODING-TUTOR-AGENT/
 
 # safe_python_runner.py
-# Primary:  week2-prompt-engineering/day3-socratic/  (original Week 2 location)
-# Fallback: week3-tool-use/shared/
+# Primary:  week2-prompt-engineering/day3-socratic/
+# Fallback: week3-tool-use/shared/ or same folder
 _add_to_path([
     _root / "week2-prompt-engineering" / "day3-socratic",
     _root / "week3-tool-use" / "shared",
@@ -72,53 +108,88 @@ _add_to_path([
 ])
 
 # tool_dispatcher.py + tool_schemas.py
-# Location: week3-tool-use/day3-tool-loop/
-_add_to_path([
-    _root / "week3-tool-use" / "day3-tool-loop",
-])
+_add_to_path([_root / "week3-tool-use" / "day3-tool-loop"])
 
 # lint_tool.py + doc_search_tool.py
-# Location: week3-tool-use/day4-more-tools/
-_add_to_path([
-    _root / "week3-tool-use" / "day4-more-tools",
-])
+_add_to_path([_root / "week3-tool-use" / "day4-more-tools"])
 
-# --- Import Week 2 sandbox ---
+
+# ============================================================
+# WEEK 2 INTEGRATION — secure Python execution sandbox
+# ============================================================
+
 try:
-    from safe_python_runner import (
-        run_python_safely,
-        find_forbidden_operation,
-        RunResult,
-    )
+    from safe_python_runner import RunResult, run_python_safely
     _WEEK2_AVAILABLE = True
+    log.debug("Week 2 sandbox loaded.")
 except ImportError:
     _WEEK2_AVAILABLE = False
+    log.warning(
+        "safe_python_runner.py not found — running without AST security. "
+        "Place it in the same folder as week4_mini_tutor.py."
+    )
 
-# --- Import Week 3 dispatcher ---
+
+# ============================================================
+# WEEK 3 INTEGRATION — lint and doc-search tools
+# ============================================================
+
 try:
     from tool_dispatcher import dispatch as _w3_dispatch
     _WEEK3_AVAILABLE = True
+    log.debug("Week 3 tool dispatcher loaded.")
 except ImportError:
     _WEEK3_AVAILABLE = False
+    log.warning("tool_dispatcher.py not found — fallback mode for lint/doc_search.")
 
 
-# -----------------------------------
-# CONSTANTS
-# -----------------------------------
+# ============================================================
+# SYSTEM PROMPT  (content lives in prompts.py)
+# ============================================================
 
-MAX_TOOL_CALLS  = 8
-MAX_CODE_LINES  = 30          # Week 4 brief: ≤30 lines per snippet
-TIMEOUT_SECONDS = 5           # Week 2 default is 3s; 5s for interactive code
-GROQ_MODEL      = "llama-3.3-70b-versatile"
-MAX_RETRIES     = 2           # Week 3 robust_tool_loop pattern
-RETRY_BACKOFF_S = 2
+from prompts import build_system_prompt
+
+SYSTEM_PROMPT: str = build_system_prompt(_WEEK2_AVAILABLE, _WEEK3_AVAILABLE)
 
 
-# -----------------------------------
-# STDLIB SET  (never pip-install these)
-# -----------------------------------
+# ============================================================
+# TYPED RESULT SHAPES
+# Shared by run_python(), lint_code(), doc_search() so callers
+# can rely on a stable contract instead of bare dicts.
+# ============================================================
 
-STDLIB_MODULES = {
+class RunPythonResult(TypedDict, total=False):
+    success: bool
+    stdout: str
+    stderr: str
+    returncode: int
+    error_type: str
+    error_message: str
+    input_mocked: bool
+    line_number: int
+    note: str | None
+    blocked: bool
+    error: str
+
+
+class LintResult(TypedDict, total=False):
+    success: bool
+    summary: str
+    issue_count: int
+    error: str
+
+
+class DocResult(TypedDict, total=False):
+    success: bool
+    summary: str
+    error: str
+
+
+# ============================================================
+# HELPER — stdlib module set  (never pip-install these)
+# ============================================================
+
+_STDLIB_MODULES: frozenset[str] = frozenset({
     "os", "sys", "re", "json", "math", "time", "datetime", "random",
     "string", "io", "pathlib", "collections", "itertools", "functools",
     "operator", "copy", "pprint", "types", "typing", "abc", "dataclasses",
@@ -133,23 +204,29 @@ STDLIB_MODULES = {
     "atexit", "builtins", "keyword", "token", "tokenize",
     "textwrap", "difflib", "decimal", "fractions", "statistics",
     "cmath", "numbers", "concurrent", "asyncio", "selectors",
-}
+})
+
+_IMPORT_RE   = re.compile(r'^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)', re.MULTILINE)
+_VALID_PKG   = re.compile(r'^[a-zA-Z0-9_\-\.]{1,100}$')
+_INPUT_RE    = re.compile(r'\binput\s*\(')
+_LINE_NUM_RE = re.compile(r'\bline\s+(\d+)')
 
 
-# -----------------------------------
-# HELPER: auto-install missing packages
-# Same validation pattern as the previous version — package names are
-# validated against PyPI naming rules before installation.
-# -----------------------------------
+# ============================================================
+# HELPER — auto-install missing third-party packages
+# Package names are validated against PyPI naming rules before
+# installation to prevent arbitrary shell injection.
+# ============================================================
 
-def _install_missing_packages(code: str) -> list:
-    pattern   = re.compile(r'^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)', re.MULTILINE)
-    found     = set(re.findall(pattern, code))
-    external  = [p for p in found if p not in STDLIB_MODULES]
-    valid_name = re.compile(r'^[a-zA-Z0-9_\-\.]{1,100}$')
-    external  = [p for p in external if valid_name.match(p)]
+def _install_missing_packages(code: str) -> list[str]:
+    """Attempt to pip-install any imported package not in the stdlib.
 
-    installed = []
+    Returns the list of package names that were installed.
+    """
+    found    = set(_IMPORT_RE.findall(code))
+    external = [p for p in found if p not in _STDLIB_MODULES and _VALID_PKG.match(p)]
+
+    installed: list[str] = []
     for pkg in external:
         try:
             __import__(pkg)
@@ -157,22 +234,23 @@ def _install_missing_packages(code: str) -> list:
             try:
                 subprocess.run(
                     [sys.executable, "-m", "pip", "install", "--", pkg, "-q"],
-                    capture_output=True, timeout=30
+                    capture_output=True, timeout=30,
                 )
                 installed.append(pkg)
-            except Exception:
-                pass
+                log.info("Auto-installed package: %s", pkg)
+            except Exception as exc:
+                log.warning("Could not install %s: %s", pkg, exc)
     return installed
 
 
-# -----------------------------------
-# HELPER: mock input() calls
+# ============================================================
+# HELPER — mock input() calls
 # Injected as a preamble so interactive programs don't hang.
-# This is a Week 4 concern (UX for students) — not a security concern,
-# which is why it lives here rather than in Week 2's sandbox.
-# -----------------------------------
+# This is a Week 4 UX concern, not a security concern — the
+# sandbox in Week 2 handles security independently.
+# ============================================================
 
-_INPUT_MOCK = """\
+_INPUT_MOCK_PREAMBLE = """\
 import builtins as _builtins
 _input_call_count = 0
 _INPUT_RESPONSES = [
@@ -190,20 +268,25 @@ _builtins.input = _mock_input
 
 """
 
+
 def _has_input_calls(code: str) -> bool:
-    return bool(re.search(r'\binput\s*\(', code))
+    return bool(_INPUT_RE.search(code))
+
 
 def _inject_input_mock(code: str) -> str:
-    return _INPUT_MOCK + code
+    return _INPUT_MOCK_PREAMBLE + code
 
 
-# -----------------------------------
-# HELPER: classify input type
-# Unchanged from previous version — Week 4 specific UX feature.
-# -----------------------------------
+# ============================================================
+# HELPER — classify student input type
+# Distinguishes JSON, Python dict literals, Python code, and
+# plain questions so each can be handled appropriately.
+# ============================================================
 
 def _classify_input(text: str) -> str:
+    """Return one of: 'json', 'dict', 'python', 'question'."""
     stripped = text.strip()
+
     if (stripped.startswith("{") and stripped.endswith("}")) or \
        (stripped.startswith("[") and stripped.endswith("]")):
         try:
@@ -217,8 +300,10 @@ def _classify_input(text: str) -> str:
             return "dict"
         except Exception:
             pass
+
     if re.match(r'^\s*\{', stripped) and ":" in stripped:
         return "dict"
+
     python_signals = [
         r'\bdef\s+\w+\s*\(', r'\bclass\s+\w+', r'\bimport\s+\w+',
         r'\bfor\s+\w+\s+in\b', r'\bwhile\s+.+:', r'\bif\s+.+:',
@@ -226,10 +311,12 @@ def _classify_input(text: str) -> str:
     ]
     if any(re.search(p, stripped) for p in python_signals):
         return "python"
+
     return "question"
 
 
 def _wrap_data_as_code(text: str, kind: str) -> str:
+    """Return runnable Python that parses and pretty-prints a data literal."""
     if kind == "json":
         return (
             f"import json\ndata = json.loads({repr(text)})\n"
@@ -255,40 +342,41 @@ def _wrap_data_as_code(text: str, kind: str) -> str:
     )
 
 
-# -----------------------------------
-# HELPER: extract line number from traceback
-# Same pattern as Week 3 structured_tutor_response.py
-# -----------------------------------
+# ============================================================
+# HELPER — extract line number from a traceback string
+# ============================================================
 
 def _extract_line_number(traceback_text: str) -> int:
+    """Return the last 'line N' value in a traceback, or 0 if none."""
     if not traceback_text:
         return 0
-    matches = re.findall(r"\bline\s+(\d+)", traceback_text)
+    matches = _LINE_NUM_RE.findall(traceback_text)
     return int(matches[-1]) if matches else 0
 
 
-# -----------------------------------
-# TOOL: run_python
-#
-# Week 4 adds:
-#   - input() mocking (UX — students paste interactive code)
-#   - dict/JSON wrapping (UX — students paste data structures)
-#   - auto-install missing packages (UX — students use third-party libs)
-#   - line number extraction from RunResult (UX — cite the failing line)
-#
-# Security (AST visitor, memory limit, subprocess isolation, path
-# normalisation) is entirely delegated to Week 2 run_python_safely().
-#
-# Fallback: if Week 2 is not available, runs a minimal subprocess
-# sandbox (timeout only — no AST security). A warning is logged.
-# -----------------------------------
+# ============================================================
+# TOOL WRAPPERS
+# Each function is a thin Week-4 adapter that adds student-UX
+# features (input mocking, data wrapping, auto-install) then
+# delegates all heavy lifting to Week 2 or Week 3.
+# ============================================================
 
-def run_python(code: str) -> dict:
+def run_python(code: str) -> RunPythonResult:
+    """Execute a Python snippet inside the Week 2 sandbox.
 
+    Week 4 additions before delegating to run_python_safely():
+    - Rejects empty input and over-long snippets.
+    - Detects JSON/dict input and wraps it in runnable Python.
+    - Auto-installs missing third-party packages.
+    - Injects an input() mock so interactive programs don't hang.
+
+    Security (AST visitor, memory cap, subprocess isolation) is
+    entirely handled by Week 2.  The fallback subprocess path is
+    used only when safe_python_runner.py cannot be found.
+    """
     if not code or not code.strip():
         return {"success": False, "error": "No Python code was provided."}
 
-    # Line limit
     lines = code.splitlines()
     if len(lines) > MAX_CODE_LINES:
         return {
@@ -296,33 +384,26 @@ def run_python(code: str) -> dict:
             "error": (
                 f"Code is {len(lines)} lines — the limit is {MAX_CODE_LINES}. "
                 "Consider breaking it into smaller sections."
-            )
+            ),
         }
 
     # Classify and optionally wrap data input
     kind = _classify_input(code)
-    note = None
+    note: str | None = None
     if kind in ("dict", "json"):
         code = _wrap_data_as_code(code, kind)
         note = f"Input detected as {kind.upper()} — wrapped in Python to analyse it."
 
-    # Auto-install missing packages before execution
     _install_missing_packages(code)
 
-    # Mock input() calls so interactive programs don't hang
     input_mocked = _has_input_calls(code)
     if input_mocked:
         code = _inject_input_mock(code)
 
-    # ── Delegate to Week 2 sandbox ─────────────────────────────────────────
+    # ── Delegate to Week 2 sandbox ──────────────────────────────────────────
     if _WEEK2_AVAILABLE:
-        result: RunResult = run_python_safely(
-            code,
-            timeout_s=TIMEOUT_SECONDS,
-            user_input="",
-        )
+        result: RunResult = run_python_safely(code, timeout_s=TIMEOUT_SECONDS, user_input="")
 
-        # Security violation — Week 2 AST caught it
         if result.error_type == "SecurityViolation":
             return {
                 "success": False,
@@ -330,10 +411,8 @@ def run_python(code: str) -> dict:
                 "error": (
                     f"Security violation: {result.error_message}\n"
                     "This operation is blocked to protect the tutor environment."
-                )
+                ),
             }
-
-        line_number = _extract_line_number(result.output)
 
         if result.ok:
             return {
@@ -347,27 +426,21 @@ def run_python(code: str) -> dict:
             }
 
         return {
-            "success":      False,
-            "stdout":       "",
-            "stderr":       result.output,
-            "returncode":   1,
-            "error_type":   result.error_type,
+            "success":       False,
+            "stdout":        "",
+            "stderr":        result.output,
+            "returncode":    1,
+            "error_type":    result.error_type,
             "error_message": result.error_message,
-            "input_mocked": input_mocked,
-            "line_number":  line_number,
-            "note":         note,
+            "input_mocked":  input_mocked,
+            "line_number":   _extract_line_number(result.output),
+            "note":          note,
         }
 
-    # ── Fallback: Week 2 not found — minimal subprocess sandbox ───────────
-    # No AST security. Logs a warning so the developer notices.
-    import tempfile, platform
-    print(
-        "[WARNING] safe_python_runner.py not found — running without AST "
-        "security. Place it in the same folder as week4_mini_tutor.py.",
-        file=sys.stderr
-    )
-
+    # ── Fallback: Week 2 not found — minimal subprocess sandbox ────────────
+    # Timeout-only; no AST security.  Developer sees a WARNING in the logs.
     import tempfile
+
     with tempfile.TemporaryDirectory() as tmp:
         script = Path(tmp) / "code.py"
         script.write_text(code, encoding="utf-8")
@@ -375,60 +448,65 @@ def run_python(code: str) -> dict:
             proc = subprocess.run(
                 [sys.executable, str(script)],
                 capture_output=True, text=True,
-                timeout=TIMEOUT_SECONDS, cwd=tmp
+                timeout=TIMEOUT_SECONDS, cwd=tmp,
             )
         except subprocess.TimeoutExpired:
             return {
-                "success": False, "error_type": "TimeoutError",
+                "success":       False,
+                "error_type":    "TimeoutError",
                 "error_message": "Program exceeded time limit. Possible infinite loop.",
-                "line_number": 0, "input_mocked": input_mocked
+                "line_number":   0,
+                "input_mocked":  input_mocked,
             }
 
-    line_number = _extract_line_number(proc.stderr)
     if proc.returncode == 0:
         return {
-            "success": True, "stdout": proc.stdout.strip(),
-            "stderr": "", "returncode": 0,
-            "input_mocked": input_mocked, "line_number": 0, "note": note
+            "success":      True,
+            "stdout":       proc.stdout.strip(),
+            "stderr":       "",
+            "returncode":   0,
+            "input_mocked": input_mocked,
+            "line_number":  0,
+            "note":         note,
         }
 
     stderr = proc.stderr.strip()
+    # Best-effort parse of "ErrorType: message" from the last traceback line
     error_type, error_message = "RuntimeError", stderr
-    if ": " in (stderr.splitlines() or [""])[-1]:
-        last = stderr.splitlines()[-1]
-        parts = last.split(": ", 1)
-        error_type, error_message = parts[0], parts[1]
+    last_line = (stderr.splitlines() or [""])[-1]
+    if ": " in last_line:
+        error_type, error_message = last_line.split(": ", 1)
 
     return {
-        "success": False, "stdout": "", "stderr": stderr, "returncode": 1,
-        "error_type": error_type, "error_message": error_message,
-        "input_mocked": input_mocked, "line_number": line_number, "note": note
+        "success":       False,
+        "stdout":        "",
+        "stderr":        stderr,
+        "returncode":    1,
+        "error_type":    error_type,
+        "error_message": error_message,
+        "input_mocked":  input_mocked,
+        "line_number":   _extract_line_number(stderr),
+        "note":          note,
     }
 
 
-# -----------------------------------
-# TOOL: lint_code
-#
-# Delegates entirely to Week 3 tool_dispatcher.dispatch("lint_code").
-# Fallback: calls ruff directly if Week 3 is not available.
-# -----------------------------------
-
-def lint_code(code: str, select: str = "E,F,W") -> dict:
+def lint_code(code: str, select: str = "E,F,W") -> LintResult:
+    """Check Python code quality via Week 3 (or ruff directly as fallback)."""
     if not code or not code.strip():
         return {"success": False, "error": "No code provided to lint."}
 
-    # ── Delegate to Week 3 dispatcher ─────────────────────────────────────
+    # ── Delegate to Week 3 dispatcher ──────────────────────────────────────
     if _WEEK3_AVAILABLE:
         raw = _w3_dispatch("lint_code", {"code": code, "select": select})
         try:
-            result = json.loads(raw)
-            return result
+            return json.loads(raw)
         except (json.JSONDecodeError, TypeError):
-            # Week 3 returns a plain string — wrap it
+            # Week 3 returned a plain string — normalise to our shape
             return {"success": True, "summary": raw, "issue_count": -1}
 
-    # ── Fallback: call ruff directly ───────────────────────────────────────
+    # ── Fallback: call ruff directly ────────────────────────────────────────
     import tempfile
+
     try:
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False, encoding="utf-8"
@@ -438,7 +516,7 @@ def lint_code(code: str, select: str = "E,F,W") -> dict:
 
         proc = subprocess.run(
             ["ruff", "check", "--select", select, tmp_path],
-            capture_output=True, text=True, timeout=10
+            capture_output=True, text=True, timeout=10,
         )
         os.remove(tmp_path)
 
@@ -453,32 +531,24 @@ def lint_code(code: str, select: str = "E,F,W") -> dict:
         return {"success": False, "error": str(exc)}
 
 
-# -----------------------------------
-# TOOL: doc_search
-#
-# Delegates entirely to Week 3 tool_dispatcher.dispatch("doc_search").
-# Fallback: returns a direct docs.python.org search URL.
-# -----------------------------------
-
-def doc_search(keyword: str, version: str = "3", max_results: int = 3) -> dict:
+def doc_search(keyword: str, version: str = "3", max_results: int = 3) -> DocResult:
+    """Search the Python docs via Week 3 (or return a direct URL as fallback)."""
     if not keyword or not keyword.strip():
         return {"success": False, "error": "No keyword provided."}
 
-    # ── Delegate to Week 3 dispatcher ─────────────────────────────────────
+    # ── Delegate to Week 3 dispatcher ──────────────────────────────────────
     if _WEEK3_AVAILABLE:
         raw = _w3_dispatch("doc_search", {
             "keyword": keyword,
             "version": version,
-            "max_results": max_results
+            "max_results": max_results,
         })
         try:
-            result = json.loads(raw)
-            return result
+            return json.loads(raw)
         except (json.JSONDecodeError, TypeError):
             return {"success": True, "summary": raw}
 
-    # ── Fallback: return search URL directly ───────────────────────────────
-    import urllib.parse
+    # ── Fallback: return a direct docs.python.org search URL ───────────────
     url = (
         f"https://docs.python.org/{version}/search.html?"
         + urllib.parse.urlencode({"q": keyword})
@@ -488,21 +558,21 @@ def doc_search(keyword: str, version: str = "3", max_results: int = 3) -> dict:
         "summary": (
             f"Python {version} docs for '{keyword}':\n{url}\n"
             "(Week 3 tool_dispatcher not found — showing direct URL)"
-        )
+        ),
     }
 
 
-# -----------------------------------
+# ============================================================
 # TOOL REGISTRY
-# -----------------------------------
+# ============================================================
 
-TOOL_FUNCTIONS = {
+TOOL_FUNCTIONS: dict[str, Any] = {
     "run_python": run_python,
     "lint_code":  lint_code,
     "doc_search": doc_search,
 }
 
-TOOL_SCHEMAS = [
+TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
@@ -526,13 +596,13 @@ TOOL_SCHEMAS = [
                             "The complete Python code to run, as a single string. "
                             "This is the ONLY parameter — never pass 'input', "
                             "'stdin', 'timeout', or any other argument."
-                        )
+                        ),
                     }
                 },
                 "required": ["code"],
-                "additionalProperties": False
-            }
-        }
+                "additionalProperties": False,
+            },
+        },
     },
     {
         "type": "function",
@@ -547,11 +617,11 @@ TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "code":   {"type": "string", "description": "Python code to lint."},
-                    "select": {"type": "string", "description": "Ruff rules e.g. 'E,F,W'. Default E,F,W."}
+                    "select": {"type": "string", "description": "Ruff rules e.g. 'E,F,W'. Default E,F,W."},
                 },
-                "required": ["code"]
-            }
-        }
+                "required": ["code"],
+            },
+        },
     },
     {
         "type": "function",
@@ -567,26 +637,30 @@ TOOL_SCHEMAS = [
                 "properties": {
                     "keyword":     {"type": "string",  "description": "Concept to look up e.g. 'enumerate'."},
                     "version":     {"type": "string",  "description": "Python version. Default '3'."},
-                    "max_results": {"type": "integer", "description": "Max results. Default 3."}
+                    "max_results": {"type": "integer", "description": "Max results. Default 3."},
                 },
-                "required": ["keyword"]
-            }
-        }
+                "required": ["keyword"],
+            },
+        },
     },
 ]
 
 
-# -----------------------------------
+# ============================================================
 # TOOL EXECUTOR
-# Validates args, drops unknown keys, never raises.
-# -----------------------------------
+# Validates and normalises args before dispatching.
+# Never raises — errors are returned as JSON for the agent.
+# ============================================================
 
-def execute_tool(tool_name: str, tool_input: dict) -> str:
-    import inspect
+def execute_tool(tool_name: str, tool_input: Any) -> str:
+    """Validate, sanitise, and dispatch a tool call from the agent loop.
 
-    # Model sometimes passes a list [{arg1}, {arg2}] — merge into one dict
+    Returns a JSON string in all cases so the agent always gets a
+    well-formed tool result message.
+    """
+    # Model sometimes passes a list of dicts instead of a single dict — merge them.
     if isinstance(tool_input, list):
-        merged = {}
+        merged: dict = {}
         for item in tool_input:
             if isinstance(item, dict):
                 merged.update(item)
@@ -601,10 +675,11 @@ def execute_tool(tool_name: str, tool_input: dict) -> str:
             "error": (
                 f"Unknown tool '{tool_name}'. "
                 f"Available: {list(TOOL_FUNCTIONS.keys())}"
-            )
+            ),
         })
 
-    # Drop invented args the function doesn't accept
+    # Drop any arguments the function doesn't declare, so the model can't inject
+    # unexpected kwargs even if it hallucinates extra parameters.
     fn     = TOOL_FUNCTIONS[tool_name]
     params = set(inspect.signature(fn).parameters.keys())
     clean  = {k: v for k, v in tool_input.items() if k in params}
@@ -617,60 +692,37 @@ def execute_tool(tool_name: str, tool_input: dict) -> str:
         return json.dumps({"success": False, "error": f"Tool crashed: {exc}"})
 
 
-# -----------------------------------
-# SYSTEM PROMPT
-# -----------------------------------
-
-_w2_status = "✓ active (AST security, memory limit, subprocess isolation)" if _WEEK2_AVAILABLE else "✗ NOT FOUND — fallback mode (no AST security)"
-_w3_status = "✓ active (ruff linter, Python docs search)" if _WEEK3_AVAILABLE else "✗ NOT FOUND — fallback mode"
-
-SYSTEM_PROMPT = f"""You are Mini-Tutor, a patient AI coding tutor for Python learners.
-Your goal is to help students UNDERSTAND bugs — never to write fixes for them.
-
-SANDBOX STATUS:
-- Week 2 security sandbox: {_w2_status}
-- Week 3 tools (lint/docs): {_w3_status}
-
-TOOL CALLING RULES:
-- run_python takes EXACTLY ONE argument: "code". Nothing else.
-- Never pass "input", "stdin", "timeout", or any other argument.
-- Always pass a single JSON object: {{"code": "..."}}
-- exec() and eval() are blocked in the sandbox.
-
-TUTOR RULES:
-1. When a student submits code, ALWAYS call run_python first.
-2. The result includes "line_number" — always cite it in Diagnosis.
-3. NEVER reveal the corrected code. One Socratic question per reply.
-4. Structure every reply EXACTLY like this:
-
-Diagnosis: (one sentence — what is wrong, citing the exact line number)
-Question: (one guiding question pointing toward the issue)
-Next Step: (one small concrete action)
-
-5. If code runs but output is wrong, ask what the student expected.
-6. Use doc_search when student is confused about a concept.
-7. Use lint_code when code runs but quality could be improved.
-8. Tone: warm, encouraging, never condescending.
-9. Maximum {MAX_TOOL_CALLS} tool calls per turn.
-10. Use plain text labels — no ** markdown bold **."""
-
-
-# -----------------------------------
-# AGENT LOOP
-# Unchanged from previous version — this is Week 4's own concern.
-# -----------------------------------
+# ============================================================
+# AGENT LOOP — ReAct pattern
+# This is Week 4's own responsibility and is not delegated
+# to Week 2 or Week 3.
+# ============================================================
 
 def run_tutor_agent(
     student_message: str,
-    conversation_history: list = None
-) -> tuple:
+    conversation_history: list[dict] | None = None,
+) -> tuple[str, list[dict]]:
+    """Run one student turn through the ReAct agent loop.
 
+    Parameters
+    ----------
+    student_message:
+        The raw text submitted by the student.
+    conversation_history:
+        All prior turns (excluding the system prompt), mutated and returned.
+
+    Returns
+    -------
+    (reply, updated_history)
+        reply:           The tutor's final text response.
+        updated_history: Full conversation minus the system prompt.
+    """
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         return (
             "Configuration error: GROQ_API_KEY is missing from your .env file.\n"
             "Create a .env file with: GROQ_API_KEY=your_key_here",
-            conversation_history or []
+            conversation_history or [],
         )
 
     client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
@@ -678,7 +730,7 @@ def run_tutor_agent(
     if conversation_history is None:
         conversation_history = []
 
-    messages = (
+    messages: list[dict] = (
         [{"role": "system", "content": SYSTEM_PROMPT}]
         + conversation_history
         + [{"role": "user", "content": student_message}]
@@ -691,30 +743,37 @@ def run_tutor_agent(
         response   = None
         last_error = ""
 
+        # ── API call with retry ─────────────────────────────────────────────
         for attempt in range(1, MAX_RETRIES + 2):
             try:
                 response = client.chat.completions.create(
                     model=GROQ_MODEL,
                     max_tokens=1500,
                     tools=TOOL_SCHEMAS,
-                    messages=messages
+                    messages=messages,
                 )
                 break
             except Exception as exc:
                 exc_str = str(exc).lower()
 
                 if "401" in exc_str or "authentication" in exc_str or "api key" in exc_str:
-                    return ("Authentication failed — check your GROQ_API_KEY in .env.", messages[1:])
+                    return (
+                        "Authentication failed — check your GROQ_API_KEY in .env.",
+                        messages[1:],
+                    )
 
                 if "model" in exc_str and ("not found" in exc_str or "deprecated" in exc_str):
-                    return (f"Model '{GROQ_MODEL}' is unavailable. Update GROQ_MODEL in config.", messages[1:])
+                    return (
+                        f"Model '{GROQ_MODEL}' is unavailable. Update GROQ_MODEL in config.py.",
+                        messages[1:],
+                    )
 
                 if "400" in exc_str or "tool_use_failed" in exc_str or "tool call validation" in exc_str:
                     return (
                         "I had trouble processing that input. "
                         "This sometimes happens with exec(), eval(), or complex escape sequences.\n\n"
                         "Try rephrasing, or paste just the relevant snippet.",
-                        messages[1:]
+                        messages[1:],
                     )
 
                 is_retryable = (
@@ -722,6 +781,7 @@ def run_tutor_agent(
                     or any(t in exc_str for t in ("connection", "timeout", "network"))
                 )
                 if is_retryable and attempt <= MAX_RETRIES:
+                    log.warning("Retryable API error (attempt %d): %s", attempt, exc)
                     time.sleep(RETRY_BACKOFF_S * attempt)
                     last_error = str(exc)
                     continue
@@ -731,18 +791,19 @@ def run_tutor_agent(
         if response is None:
             return (f"API call failed after retries: {last_error}", messages[1:])
 
+        # ── Process response ────────────────────────────────────────────────
         choice  = response.choices[0]
         message = choice.message
         finish  = choice.finish_reason
 
-        # Convert SDK object → plain dict (prevents 400 on subsequent turns)
+        # Convert SDK object → plain dict to avoid 400 errors on subsequent turns.
         assistant_dict: dict = {"role": "assistant", "content": message.content or ""}
         if message.tool_calls:
             assistant_dict["tool_calls"] = [
                 {
                     "id":       tc.id,
                     "type":     "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments}
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
                 }
                 for tc in message.tool_calls
             ]
@@ -765,45 +826,44 @@ def run_tutor_agent(
                     result_content = execute_tool(tc.function.name, args)
 
                 messages.append({
-                    "role": "tool", "tool_call_id": tc.id, "content": result_content
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result_content,
                 })
         else:
             final_reply = "I ran into an unexpected state. Please try submitting your code again."
             break
 
-    updated_history = messages[1:]
-    return final_reply, updated_history
+    # Strip the system prompt before returning so history stays clean.
+    return final_reply, messages[1:]
 
 
-# -----------------------------------
-# STARTUP: report which weeks are loaded
-# -----------------------------------
+# ============================================================
+# CLI — startup banner and interactive REPL
+# ============================================================
 
 def _print_startup_status() -> None:
+    w2 = "✓ Week 2 sandbox (AST security)" if _WEEK2_AVAILABLE else "✗ Week 2 NOT FOUND — fallback mode"
+    w3 = "✓ Week 3 tools (lint, doc_search)" if _WEEK3_AVAILABLE else "✗ Week 3 NOT FOUND — fallback mode"
     print("\n" + "=" * 55)
     print("  MINI-TUTOR v2  —  Week 2+3+4 Integration")
     print("=" * 55)
-    w2 = "✓ Week 2 sandbox (AST security)" if _WEEK2_AVAILABLE else "✗ Week 2 NOT FOUND — fallback mode"
-    w3 = "✓ Week 3 tools (lint, doc_search)" if _WEEK3_AVAILABLE else "✗ Week 3 NOT FOUND — fallback mode"
     print(f"  {w2}")
     print(f"  {w3}")
     print("=" * 55)
 
 
-# -----------------------------------
-# CLI ENTRY POINT
-# -----------------------------------
-
 if __name__ == "__main__":
     _print_startup_status()
     print("  Type 'quit' to exit.\n")
 
-    history = []
+    history: list[dict] = []
     while True:
         print("\nPaste your Python code, a dict, or a question.")
         print("Press ENTER twice to submit.\n")
 
-        lines, blank_count = [], 0
+        lines: list[str] = []
+        blank_count = 0
         while True:
             try:
                 line = input()
