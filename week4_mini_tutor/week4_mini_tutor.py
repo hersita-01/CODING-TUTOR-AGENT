@@ -1,45 +1,118 @@
 # -----------------------------------
-# WEEK 4 - MINI-TUTOR v1  (FULLY FIXED)
+# WEEK 4 - MINI-TUTOR v2
 # CORE AGENT  —  GROQ API
 # -----------------------------------
 #
-# Fixed in this version:
-#   1. Removed timeout_s from tool schema — Groq was generating broken JSON
-#      when it tried to pass two separate args {code}{timeout_s}
-#   2. input() calls are mocked before execution — no more hangs
-#   3. Handles dict / JSON / plain-text input gracefully
-#   4. SDK object → plain dict conversion (400 error fix)
-#   5. GROQ_MODEL variable name (was GROK_MODEL typo)
-#   6. 300-line limit, 15s timeout, 80+ doc topics
-#   7. Auto-installs missing pip packages
+# Architecture: calls Week 2 and Week 3 instead of reimplementing them.
+#
+# Week 2  safe_python_runner.py
+#   └─ run_python_safely()     ← execution sandbox (AST security, timeout,
+#   └─ find_forbidden_operation()   memory limit, subprocess isolation)
+#   └─ RunResult               ← structured result object
+#
+# Week 3  tool_dispatcher.py
+#   └─ dispatch()              ← routes lint_code and doc_search tool calls
+#
+# Week 4  week4_mini_tutor.py  (this file)
+#   └─ run_python()            ← thin wrapper: input mock + auto-install
+#                                 then calls run_python_safely()
+#   └─ lint_code()             ← delegates to Week 3 dispatch("lint_code")
+#   └─ doc_search()            ← delegates to Week 3 dispatch("doc_search")
+#   └─ run_tutor_agent()       ← ReAct loop (unchanged)
+#
+# What this file no longer reimplements:
+#   ✗ AST security visitor           → Week 2 safe_python_runner.py
+#   ✗ Subprocess sandbox             → Week 2 safe_python_runner.py
+#   ✗ Memory limit                   → Week 2 safe_python_runner.py
+#   ✗ Path normalisation             → Week 2 safe_python_runner.py
+#   ✗ ruff linter wrapper            → Week 3 tool_dispatcher / lint_tool.py
+#   ✗ doc search implementation      → Week 3 tool_dispatcher / doc_search_tool.py
+#   ✗ Retry/backoff logic            → kept here (agent-specific concern)
 #
 # Requires:  pip install openai python-dotenv ruff
 #            GROQ_API_KEY in .env
+#            safe_python_runner.py in same folder or day3-socratic/
+#            tool_dispatcher.py   in same folder or day3-tool-loop/
 # -----------------------------------
 
-import subprocess
-import tempfile
-import os
-import sys
 import json
+import os
 import re
+import subprocess
+import sys
 import time
+from pathlib import Path
 
-from openai import OpenAI
 from dotenv import load_dotenv
+from openai import OpenAI
 
 load_dotenv()
+
+
+# -----------------------------------
+# CROSS-FOLDER IMPORTS
+# Supports any working directory — same pattern used in Week 3 files.
+# -----------------------------------
+
+def _add_to_path(candidates: list[Path]) -> None:
+    for c in candidates:
+        if c.exists() and str(c) not in sys.path:
+            sys.path.insert(0, str(c))
+
+_here = Path(__file__).resolve().parent   # CODING-TUTOR-AGENT/week4_mini_tutor/
+_root = _here.parent                      # CODING-TUTOR-AGENT/
+
+# safe_python_runner.py
+# Primary:  week2-prompt-engineering/day3-socratic/  (original Week 2 location)
+# Fallback: week3-tool-use/shared/
+_add_to_path([
+    _root / "week2-prompt-engineering" / "day3-socratic",
+    _root / "week3-tool-use" / "shared",
+    _here,
+])
+
+# tool_dispatcher.py + tool_schemas.py
+# Location: week3-tool-use/day3-tool-loop/
+_add_to_path([
+    _root / "week3-tool-use" / "day3-tool-loop",
+])
+
+# lint_tool.py + doc_search_tool.py
+# Location: week3-tool-use/day4-more-tools/
+_add_to_path([
+    _root / "week3-tool-use" / "day4-more-tools",
+])
+
+# --- Import Week 2 sandbox ---
+try:
+    from safe_python_runner import (
+        run_python_safely,
+        find_forbidden_operation,
+        RunResult,
+    )
+    _WEEK2_AVAILABLE = True
+except ImportError:
+    _WEEK2_AVAILABLE = False
+
+# --- Import Week 3 dispatcher ---
+try:
+    from tool_dispatcher import dispatch as _w3_dispatch
+    _WEEK3_AVAILABLE = True
+except ImportError:
+    _WEEK3_AVAILABLE = False
+
 
 # -----------------------------------
 # CONSTANTS
 # -----------------------------------
 
 MAX_TOOL_CALLS  = 8
-MAX_CODE_LINES  = 30          # Week 4 brief requires ≤30 lines per snippet
-TIMEOUT_SECONDS = 15
+MAX_CODE_LINES  = 30          # Week 4 brief: ≤30 lines per snippet
+TIMEOUT_SECONDS = 5           # Week 2 default is 3s; 5s for interactive code
 GROQ_MODEL      = "llama-3.3-70b-versatile"
-MAX_RETRIES     = 2            # retry rate-limit/network errors (Week 3 pattern)
+MAX_RETRIES     = 2           # Week 3 robust_tool_loop pattern
 RETRY_BACKOFF_S = 2
+
 
 # -----------------------------------
 # STDLIB SET  (never pip-install these)
@@ -64,101 +137,17 @@ STDLIB_MODULES = {
 
 
 # -----------------------------------
-# HELPER: extract line number from traceback
-# Reused pattern from Week 3 structured_tutor_response.py extract_line_number()
-# -----------------------------------
-
-def _extract_line_number(traceback_text: str) -> int:
-    """
-    Extract the last 'line N' reference from a Python traceback or
-    SyntaxError message. Returns 0 if no line number is found.
-    The LAST match is the innermost frame — the actual failing line.
-    """
-    if not traceback_text:
-        return 0
-    matches = re.findall(r"\bline\s+(\d+)", traceback_text)
-    return int(matches[-1]) if matches else 0
-
-
-# -----------------------------------
-# HELPER: classify input
-# -----------------------------------
-
-def _classify_input(text: str) -> str:
-    """
-    Classify what the user submitted:
-      'python'   — Python source code
-      'dict'     — a Python dict literal  { "key": value, ... }
-      'json'     — a JSON string
-      'question' — a plain English question
-    """
-    stripped = text.strip()
-
-    # JSON object / array
-    if (stripped.startswith("{") and stripped.endswith("}")) or \
-       (stripped.startswith("[") and stripped.endswith("]")):
-        try:
-            json.loads(stripped)
-            return "json"
-        except json.JSONDecodeError:
-            pass
-        # Might be a Python dict / list literal
-        try:
-            import ast
-            ast.literal_eval(stripped)
-            return "dict"
-        except Exception:
-            pass
-
-    # Python dict literal with unquoted keys
-    if re.match(r'^\s*\{', stripped) and ":" in stripped:
-        return "dict"
-
-    # Has Python keywords / def / class / import
-    python_signals = [
-        r'\bdef\s+\w+\s*\(',
-        r'\bclass\s+\w+',
-        r'\bimport\s+\w+',
-        r'\bfor\s+\w+\s+in\b',
-        r'\bwhile\s+.+:',
-        r'\bif\s+.+:',
-        r'\bprint\s*\(',
-        r'\breturn\b',
-        r'=\s*\[',
-        r'=\s*\{',
-    ]
-    if any(re.search(p, stripped) for p in python_signals):
-        return "python"
-
-    return "question"
-
-
-# -----------------------------------
 # HELPER: auto-install missing packages
+# Same validation pattern as the previous version — package names are
+# validated against PyPI naming rules before installation.
 # -----------------------------------
 
 def _install_missing_packages(code: str) -> list:
-    """
-    Auto-installs packages imported by student code that aren't in the
-    standard library. SAFETY NOTE: this runs `pip install <name>` for any
-    import statement found in student code. Package names are validated
-    against PyPI's naming rules before installation to reject shell
-    metacharacters or path traversal attempts disguised as package names.
-    This is documented as a known limitation in the README — for a
-    public-facing deployment, pin to an explicit allowlist instead.
-    """
-    pattern = re.compile(
-        r'^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)',
-        re.MULTILINE
-    )
-    found    = set(re.findall(pattern, code))
-    external = [p for p in found if p not in STDLIB_MODULES]
-
-    # Reject anything that isn't a valid, simple PyPI-style package name —
-    # blocks injection via crafted "import" lines such as
-    # "import os; subprocess.run(...)" being mistaken for a package name.
+    pattern   = re.compile(r'^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)', re.MULTILINE)
+    found     = set(re.findall(pattern, code))
+    external  = [p for p in found if p not in STDLIB_MODULES]
     valid_name = re.compile(r'^[a-zA-Z0-9_\-\.]{1,100}$')
-    external   = [p for p in external if valid_name.match(p)]
+    external  = [p for p in external if valid_name.match(p)]
 
     installed = []
     for pkg in external:
@@ -168,8 +157,7 @@ def _install_missing_packages(code: str) -> list:
             try:
                 subprocess.run(
                     [sys.executable, "-m", "pip", "install", "--", pkg, "-q"],
-                    capture_output=True,
-                    timeout=30
+                    capture_output=True, timeout=30
                 )
                 installed.append(pkg)
             except Exception:
@@ -179,12 +167,12 @@ def _install_missing_packages(code: str) -> list:
 
 # -----------------------------------
 # HELPER: mock input() calls
+# Injected as a preamble so interactive programs don't hang.
+# This is a Week 4 concern (UX for students) — not a security concern,
+# which is why it lives here rather than in Week 2's sandbox.
 # -----------------------------------
 
 _INPUT_MOCK = """\
-# ── AUTO-INJECTED BY TUTOR ──────────────────────────────────
-# input() is mocked so the program runs without hanging.
-# Each call returns a safe placeholder value.
 import builtins as _builtins
 _input_call_count = 0
 _INPUT_RESPONSES = [
@@ -199,12 +187,10 @@ def _mock_input(prompt=""):
     print(response)
     return response
 _builtins.input = _mock_input
-# ────────────────────────────────────────────────────────────
 
 """
 
 def _has_input_calls(code: str) -> bool:
-    # Match input( that is not inside a comment or string
     return bool(re.search(r'\binput\s*\(', code))
 
 def _inject_input_mock(code: str) -> str:
@@ -212,81 +198,97 @@ def _inject_input_mock(code: str) -> str:
 
 
 # -----------------------------------
-# HELPER: handle dict / JSON input
+# HELPER: classify input type
+# Unchanged from previous version — Week 4 specific UX feature.
 # -----------------------------------
+
+def _classify_input(text: str) -> str:
+    stripped = text.strip()
+    if (stripped.startswith("{") and stripped.endswith("}")) or \
+       (stripped.startswith("[") and stripped.endswith("]")):
+        try:
+            json.loads(stripped)
+            return "json"
+        except json.JSONDecodeError:
+            pass
+        try:
+            import ast as _ast
+            _ast.literal_eval(stripped)
+            return "dict"
+        except Exception:
+            pass
+    if re.match(r'^\s*\{', stripped) and ":" in stripped:
+        return "dict"
+    python_signals = [
+        r'\bdef\s+\w+\s*\(', r'\bclass\s+\w+', r'\bimport\s+\w+',
+        r'\bfor\s+\w+\s+in\b', r'\bwhile\s+.+:', r'\bif\s+.+:',
+        r'\bprint\s*\(', r'\breturn\b', r'=\s*\[', r'=\s*\{',
+    ]
+    if any(re.search(p, stripped) for p in python_signals):
+        return "python"
+    return "question"
+
 
 def _wrap_data_as_code(text: str, kind: str) -> str:
-    """
-    Wrap a raw dict or JSON string in runnable Python
-    so run_python can analyse it.
-    """
     if kind == "json":
         return (
-            f"import json, pprint\n"
-            f"data = json.loads({repr(text)})\n"
-            f"print('Type:', type(data).__name__)\n"
-            f"print('Keys:', list(data.keys()) if isinstance(data, dict) else f'Length: {{len(data)}}')\n"
-            f"print('\\nContent:')\n"
-            f"pprint.pprint(data)\n"
+            f"import json\ndata = json.loads({repr(text)})\n"
+            "print('Type:', type(data).__name__)\n"
+            "print('Value:', data)\n"
+            "if isinstance(data, dict):\n"
+            "    print('Keys:', list(data.keys()))\n"
+            "    for k, v in data.items():\n"
+            "        print(f'  {k}: {v} ({type(v).__name__})')\n"
+            "elif isinstance(data, list):\n"
+            "    print('Length:', len(data))\n"
         )
-    else:  # dict / list literal
-        return (
-            f"import pprint\n"
-            f"data = {text}\n"
-            f"print('Type:', type(data).__name__)\n"
-            f"if isinstance(data, dict):\n"
-            f"    print('Keys:', list(data.keys()))\n"
-            f"    print('Items:')\n"
-            f"    for k, v in data.items():\n"
-            f"        print(f'  {{k}}: {{v}}')\n"
-            f"elif isinstance(data, list):\n"
-            f"    print('Length:', len(data))\n"
-            f"    pprint.pprint(data)\n"
-            f"else:\n"
-            f"    pprint.pprint(data)\n"
-        )
+    return (
+        f"data = {text}\n"
+        "print('Type:', type(data).__name__)\n"
+        "print('Value:', data)\n"
+        "if isinstance(data, dict):\n"
+        "    print('Keys:', list(data.keys()))\n"
+        "    for k, v in data.items():\n"
+        "        print(f'  {k}: {v} ({type(v).__name__})')\n"
+        "elif isinstance(data, list):\n"
+        "    print('Length:', len(data))\n"
+    )
 
 
 # -----------------------------------
-# TOOL 1 : RUN PYTHON
+# HELPER: extract line number from traceback
+# Same pattern as Week 3 structured_tutor_response.py
+# -----------------------------------
+
+def _extract_line_number(traceback_text: str) -> int:
+    if not traceback_text:
+        return 0
+    matches = re.findall(r"\bline\s+(\d+)", traceback_text)
+    return int(matches[-1]) if matches else 0
+
+
+# -----------------------------------
+# TOOL: run_python
+#
+# Week 4 adds:
+#   - input() mocking (UX — students paste interactive code)
+#   - dict/JSON wrapping (UX — students paste data structures)
+#   - auto-install missing packages (UX — students use third-party libs)
+#   - line number extraction from RunResult (UX — cite the failing line)
+#
+# Security (AST visitor, memory limit, subprocess isolation, path
+# normalisation) is entirely delegated to Week 2 run_python_safely().
+#
+# Fallback: if Week 2 is not available, runs a minimal subprocess
+# sandbox (timeout only — no AST security). A warning is logged.
 # -----------------------------------
 
 def run_python(code: str) -> dict:
-    """
-    Execute Python code in a subprocess sandbox.
-    - Detects and mocks input() calls so interactive programs run
-    - Auto-installs missing pip packages
-    - Handles dict / JSON / file-content passed as code
-    - Max 300 lines, 15s timeout
-    """
 
     if not code or not code.strip():
         return {"success": False, "error": "No Python code was provided."}
 
-    # Pre-flight: exec() and eval() cause Groq to generate malformed tool call
-    # syntax (it merges the function name and arguments incorrectly).
-    # Block them here with a clear message before any API call is attempted.
-    if re.search(r'\b(exec|eval)\s*\(', code):
-        return {
-            "success":    False,
-            "blocked":    True,
-            "error": (
-                "exec() and eval() are not supported in this tutor sandbox. "
-                "They execute arbitrary code dynamically which cannot be safely "
-                "analysed. Try rewriting the code without exec/eval."
-            )
-        }
-
-    # Detect input type
-    kind = _classify_input(code)
-
-    # If user pasted a raw dict or JSON — wrap it
-    if kind in ("dict", "json"):
-        code = _wrap_data_as_code(code, kind)
-        note = f"Input was detected as a {kind.upper()} — wrapped in Python to analyse it."
-    else:
-        note = None
-
+    # Line limit
     lines = code.splitlines()
     if len(lines) > MAX_CODE_LINES:
         return {
@@ -297,263 +299,201 @@ def run_python(code: str) -> dict:
             )
         }
 
-    # Mock input() if present
-    input_mocked = False
-    if _has_input_calls(code):
-        code         = _inject_input_mock(code)
-        input_mocked = True
+    # Classify and optionally wrap data input
+    kind = _classify_input(code)
+    note = None
+    if kind in ("dict", "json"):
+        code = _wrap_data_as_code(code, kind)
+        note = f"Input detected as {kind.upper()} — wrapped in Python to analyse it."
 
-    # Auto-install missing packages
-    installed = _install_missing_packages(code)
+    # Auto-install missing packages before execution
+    _install_missing_packages(code)
 
-    temp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False, encoding="utf-8"
-        ) as f:
-            f.write(code)
-            temp_path = f.name
+    # Mock input() calls so interactive programs don't hang
+    input_mocked = _has_input_calls(code)
+    if input_mocked:
+        code = _inject_input_mock(code)
 
-        result = subprocess.run(
-            [sys.executable, temp_path],
-            capture_output=True,
-            text=True,
-            timeout=TIMEOUT_SECONDS
+    # ── Delegate to Week 2 sandbox ─────────────────────────────────────────
+    if _WEEK2_AVAILABLE:
+        result: RunResult = run_python_safely(
+            code,
+            timeout_s=TIMEOUT_SECONDS,
+            user_input="",
         )
-        os.remove(temp_path)
 
-        # Extract the failing line number from stderr so the tutor can
-        # point the student to the exact line, per the Week 4 brief
-        # requirement: "a single Socratic question that points the
-        # learner to the right line — not the fix."
-        line_number = _extract_line_number(result.stderr) if result.stderr else 0
+        # Security violation — Week 2 AST caught it
+        if result.error_type == "SecurityViolation":
+            return {
+                "success": False,
+                "blocked": True,
+                "error": (
+                    f"Security violation: {result.error_message}\n"
+                    "This operation is blocked to protect the tutor environment."
+                )
+            }
 
-        response = {
-            "success":      True,
-            "stdout":       result.stdout,
-            "stderr":       result.stderr,
-            "returncode":   result.returncode,
+        line_number = _extract_line_number(result.output)
+
+        if result.ok:
+            return {
+                "success":      True,
+                "stdout":       result.output,
+                "stderr":       "",
+                "returncode":   0,
+                "input_mocked": input_mocked,
+                "line_number":  0,
+                "note":         note,
+            }
+
+        return {
+            "success":      False,
+            "stdout":       "",
+            "stderr":       result.output,
+            "returncode":   1,
+            "error_type":   result.error_type,
+            "error_message": result.error_message,
             "input_mocked": input_mocked,
             "line_number":  line_number,
+            "note":         note,
         }
-        if note:
-            response["note"] = note
-        if installed:
-            response["packages_installed"] = installed
 
-        return response
+    # ── Fallback: Week 2 not found — minimal subprocess sandbox ───────────
+    # No AST security. Logs a warning so the developer notices.
+    import tempfile, platform
+    print(
+        "[WARNING] safe_python_runner.py not found — running without AST "
+        "security. Place it in the same folder as week4_mini_tutor.py.",
+        file=sys.stderr
+    )
 
-    except subprocess.TimeoutExpired:
-        if temp_path:
-            try:
-                os.remove(temp_path)
-            except Exception:
-                pass
-        return {
-            "success": False,
-            "error": (
-                f"Execution stopped after {TIMEOUT_SECONDS}s. "
-                "This usually means an infinite loop or a very slow algorithm. "
-                "Check loop conditions or add print statements to trace progress."
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        script = Path(tmp) / "code.py"
+        script.write_text(code, encoding="utf-8")
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(script)],
+                capture_output=True, text=True,
+                timeout=TIMEOUT_SECONDS, cwd=tmp
             )
+        except subprocess.TimeoutExpired:
+            return {
+                "success": False, "error_type": "TimeoutError",
+                "error_message": "Program exceeded time limit. Possible infinite loop.",
+                "line_number": 0, "input_mocked": input_mocked
+            }
+
+    line_number = _extract_line_number(proc.stderr)
+    if proc.returncode == 0:
+        return {
+            "success": True, "stdout": proc.stdout.strip(),
+            "stderr": "", "returncode": 0,
+            "input_mocked": input_mocked, "line_number": 0, "note": note
         }
 
-    except Exception as e:
-        return {"success": False, "error": f"Execution environment error: {str(e)}"}
+    stderr = proc.stderr.strip()
+    error_type, error_message = "RuntimeError", stderr
+    if ": " in (stderr.splitlines() or [""])[-1]:
+        last = stderr.splitlines()[-1]
+        parts = last.split(": ", 1)
+        error_type, error_message = parts[0], parts[1]
+
+    return {
+        "success": False, "stdout": "", "stderr": stderr, "returncode": 1,
+        "error_type": error_type, "error_message": error_message,
+        "input_mocked": input_mocked, "line_number": line_number, "note": note
+    }
 
 
 # -----------------------------------
-# TOOL 2 : LINT CODE
+# TOOL: lint_code
+#
+# Delegates entirely to Week 3 tool_dispatcher.dispatch("lint_code").
+# Fallback: calls ruff directly if Week 3 is not available.
 # -----------------------------------
 
-def lint_code(code: str) -> dict:
-    """Run ruff linter on Python code."""
-
+def lint_code(code: str, select: str = "E,F,W") -> dict:
     if not code or not code.strip():
-        return {"success": False, "error": "No code was provided for linting."}
+        return {"success": False, "error": "No code provided to lint."}
 
-    temp_path = None
+    # ── Delegate to Week 3 dispatcher ─────────────────────────────────────
+    if _WEEK3_AVAILABLE:
+        raw = _w3_dispatch("lint_code", {"code": code, "select": select})
+        try:
+            result = json.loads(raw)
+            return result
+        except (json.JSONDecodeError, TypeError):
+            # Week 3 returns a plain string — wrap it
+            return {"success": True, "summary": raw, "issue_count": -1}
+
+    # ── Fallback: call ruff directly ───────────────────────────────────────
+    import tempfile
     try:
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False, encoding="utf-8"
-        ) as f:
-            f.write(code)
-            temp_path = f.name
+        ) as tmp:
+            tmp.write(code)
+            tmp_path = tmp.name
 
-        result = subprocess.run(
-            ["ruff", "check", temp_path, "--select", "E,F,W"],
-            capture_output=True,
-            text=True
+        proc = subprocess.run(
+            ["ruff", "check", "--select", select, tmp_path],
+            capture_output=True, text=True, timeout=10
         )
-        os.remove(temp_path)
+        os.remove(tmp_path)
 
-        lint_output = result.stdout.replace(temp_path, "<your_code>")
-        return {
-            "success":      True,
-            "issues_found": bool(lint_output.strip()),
-            "lint_output":  lint_output,
-        }
+        output = re.sub(r"[^\s]+\.py:", "Line ", proc.stdout.strip())
+        if not output:
+            return {"success": True, "summary": "No lint issues found.", "issue_count": 0}
+        return {"success": True, "summary": output, "issue_count": output.count("\n") + 1}
 
     except FileNotFoundError:
         return {"success": False, "error": "ruff not installed. Run: pip install ruff"}
-
-    except Exception as e:
-        return {"success": False, "error": f"Linter error: {str(e)}"}
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
 
 
 # -----------------------------------
-# TOOL 3 : DOC SEARCH  (80+ concepts)
+# TOOL: doc_search
+#
+# Delegates entirely to Week 3 tool_dispatcher.dispatch("doc_search").
+# Fallback: returns a direct docs.python.org search URL.
 # -----------------------------------
 
-def doc_search(keyword: str) -> dict:
-    """Search 80+ Python documentation topics with partial + fuzzy matching."""
-
+def doc_search(keyword: str, version: str = "3", max_results: int = 3) -> dict:
     if not keyword or not keyword.strip():
-        return {"success": False, "error": "No keyword was provided."}
+        return {"success": False, "error": "No keyword provided."}
 
-    python_docs = {
-        # Core data types
-        "integer":      "int stores whole numbers. Arithmetic: +,-,*,/,//,%,**. Convert: int(). int('5')=5, int(3.9)=3 (truncates). Beware: 5/2=2.5 (float division), 5//2=2 (floor division).",
-        "float":        "float stores decimals. Precision issue: 0.1+0.2≠0.3 exactly. Use round(x,n). For exact decimals use the 'decimal' module. Convert: float('3.14').",
-        "string":       "str stores text in '' or \"\". Immutable. Methods: .strip(),.split(),.join(),.replace(),.find(),.startswith(),.endswith(),.upper(),.lower(),.format(). f-strings: f'Hello {name}'. Multiline: triple quotes.",
-        "boolean":      "bool is True or False. Falsy values: 0, 0.0, '', [], {}, set(), None. Everything else is truthy. Operators: and, or, not. bool(x) converts anything.",
-        "none":         "None is Python's null/empty value. Functions with no return give None. Check with 'if x is None:' — never 'if x == None:'. Useful as a default parameter sentinel.",
-        "list":         "list: ordered, mutable. [], list(). Methods: .append(x),.extend(lst),.insert(i,x),.remove(x),.pop(i),.sort(),.reverse(),.index(x),.count(x). Supports slicing. Negative index: lst[-1] is last.",
-        "tuple":        "tuple: ordered, immutable. (a,b) or just a,b. Can't change after creation. Unpack: x,y=(1,2). Single item: (1,). Use as dict keys (unlike lists). Named tuples from collections.namedtuple.",
-        "dictionary":   "dict: key-value pairs. {}, dict(). Access: d[k] or d.get(k, default). Methods: .keys(),.values(),.items(),.update(),.pop(),.setdefault(). Dict comprehension: {k:v for k,v in items}. Keys must be hashable.",
-        "set":          "set: unique unordered values. set() — not {} (that's dict). .add(),.remove(),.discard(). Operations: |union, &intersection, -difference, ^symmetric_diff. Fast membership: 'x in s' is O(1).",
-        "bytes":        "bytes: immutable raw binary. b'hello' or bytes(n). Immutable. .decode('utf-8') → str. str.encode('utf-8') → bytes. Used in file I/O, networking, hashing.",
-        "complex":      "complex: real+imaginary. 3+4j. .real and .imag attributes. abs(3+4j)=5.0 (magnitude). Used in signal processing, scientific computing.",
-        # Variables & operators
-        "variable":     "Variables store references to objects. Dynamically typed — no declaration needed. snake_case convention. UPPER_CASE for constants. Multiple assignment: a=b=c=0. Swap: a,b=b,a.",
-        "operator":     "Arithmetic: +,-,*,/,//,%,**. Comparison: ==,!=,<,>,<=,>=. Logical: and,or,not. Identity: is,is not. Membership: in,not in. Bitwise: &,|,^,~,<<,>>. Augmented: +=,-=,*=,/=,//=,%=,**=.",
-        "comparison":   "==checks value equality, 'is' checks identity (same object). Use 'is' only for None/True/False. Chain: 0<x<10. 'in' checks membership in list/dict/set/string.",
-        "casting":      "Type conversion: int('5'), float('3.14'), str(42), bool(0), list('abc')→['a','b','c'], tuple([1,2]), set([1,1,2])→{1,2}. ValueError if impossible: int('hello').",
-        # Control flow
-        "if":           "if-elif-else: 'if cond: ... elif other: ... else: ...'. Ternary: x = a if cond else b. Conditions use any truthy/falsy value. No switch — use if-elif or match-case (Python 3.10+).",
-        "for loop":     "for iterates any iterable. 'for item in sequence:'. range(n), range(start,stop), range(start,stop,step). enumerate() for index+value. zip() for parallel iteration. else clause runs if loop completes without break.",
-        "while loop":   "'while condition:' runs until condition is False. Always ensure condition can become False or use break. else clause runs if loop completes without break. Use for unknown iteration count.",
-        "loop":         "for: iterate sequences. while: condition-based. break: exit loop. continue: skip to next iteration. else on loop: runs if no break. range(), enumerate(), zip() are common loop helpers.",
-        "break":        "break exits the nearest loop immediately. Used inside if to stop early. Works in for and while. Common pattern: search loop that breaks when found, else clause handles 'not found'.",
-        "continue":     "continue skips rest of current iteration, jumps to next. Useful to skip invalid values. Example: for x in data: if x<0: continue; process(x).",
-        "range":        "range(stop), range(start,stop), range(start,stop,step). Doesn't include stop. range(5)→0,1,2,3,4. Negative step: range(10,0,-1). list(range(n)) to materialise. Memory efficient — doesn't build a list.",
-        "pass":         "pass is a no-op placeholder. Use in empty class/function/if bodies. Prevents SyntaxError from empty blocks. Replace with real code when ready.",
-        # Functions
-        "function":     "def name(params): ... return value. Parameters are local. Default args: def f(x=10). *args: extra positional as tuple. **kwargs: extra keyword as dict. Docstring: first string inside function.",
-        "return":       "return sends value back to caller. No return → None. Return multiple: return a,b (tuple). Unpack: x,y=f(). Early return for guard clauses. return in a generator becomes StopIteration.",
-        "argument":     "Positional: f(1,2). Keyword: f(x=1,y=2). *args collects extra positionals as tuple. **kwargs collects extra keywords as dict. Keyword-only args after *: def f(*,key). Positional-only before /: def f(x,/).",
-        "lambda":       "lambda args: expression. Single expression only. Examples: lambda x: x*2, lambda x,y: x+y. Used with map/filter/sorted. For anything complex, use def — it's more readable.",
-        "scope":        "LEGB rule: Local → Enclosing → Global → Built-in. Assignment inside function creates local var. 'global x' to modify module global. 'nonlocal x' to modify enclosing function's var.",
-        "closure":      "A closure is a function that captures variables from its enclosing scope. def outer(): x=10; def inner(): return x; return inner. Useful for factory functions and decorators.",
-        "decorator":    "@decorator wraps a function. def my_dec(func): def wrapper(*a,**k): ...; return func(*a,**k); return wrapper. Built-in: @staticmethod,@classmethod,@property. @functools.wraps preserves metadata.",
-        "generator":    "yield makes a generator — produces values lazily. def gen(): yield 1; yield 2. Saves memory for large sequences. Generator expression: (x*2 for x in range(10)). next() gets one value.",
-        "comprehension":"[expr for x in it if cond]. Dict: {k:v for ...}. Set: {expr for ...}. Generator: (expr for ...). Faster than append loop. Avoid nested comprehensions deeper than 2 levels.",
-        "recursion":    "Function calling itself. MUST have base case. Python limit: 1000 (RecursionError). sys.setrecursionlimit(n) to raise. Good for: trees, fractals, divide-and-conquer. Tail recursion not optimised — use loop for deep recursion.",
-        "map":          "map(func, iterable) applies func to every item lazily. list(map(str,[1,2,3]))→['1','2','3']. Multiple iterables: map(func,a,b). Often replaced by list comprehension for clarity.",
-        "filter":       "filter(func, iterable) keeps items where func returns True. list(filter(lambda x:x>0,[-1,2,-3]))→[2]. None as func keeps truthy items. Often replaced by [x for x in lst if cond].",
-        "zip":          "zip(a,b) pairs elements: list(zip([1,2],[3,4]))→[(1,3),(2,4)]. Stops at shortest. zip_longest from itertools fills missing. Unzip: a,b=zip(*pairs). Great for dict creation: dict(zip(keys,values)).",
-        "sorted":       "sorted(it, key=func, reverse=False) → new sorted list. list.sort() sorts in place. key= for custom: sorted(words,key=len), sorted(dicts,key=lambda d:d['age']). Stable sort.",
-        # OOP
-        "class":        "class Name: ... def __init__(self,...): self.attr=value. Create: obj=Name(args). Methods need self. Class variables shared across instances. Instance variables per object.",
-        "object":       "Everything in Python is an object with type, id, value. Variables are references. dir(obj) lists attributes/methods. hasattr/getattr/setattr/delattr for dynamic access.",
-        "inheritance":  "class Child(Parent): ... super().__init__() calls parent init. Override methods by redefining. Multiple inheritance: class C(A,B). MRO (Method Resolution Order) determines which method is called.",
-        "super":        "super() returns proxy of parent class. super().__init__(args) calls parent constructor. super().method() calls parent's version. Avoids hard-coding parent class name.",
-        "method":       "Instance methods: first param is self. Class methods: @classmethod, first param is cls. Static methods: @staticmethod, no special param. __init__ is constructor, __str__ for print, __repr__ for repr().",
-        "dunder":       "Magic methods: __init__(constructor), __str__(str()), __repr__(repr()), __len__(len()), __eq__(==), __lt__(<), __add__(+), __getitem__([]), __iter__, __next__. Define to customise built-in behaviour.",
-        "property":     "@property makes method act as attribute. @name.setter for writing. @name.deleter for del. Allows validation without changing interface: obj.x = -1 can raise ValueError.",
-        "abstract":     "from abc import ABC, abstractmethod. class Shape(ABC): @abstractmethod def area(self): pass. Can't instantiate ABC directly. Forces subclasses to implement abstract methods.",
-        "dataclass":    "@dataclass auto-generates __init__,__repr__,__eq__ from type-annotated fields. from dataclasses import dataclass, field. frozen=True for immutable. Python 3.7+.",
-        "polymorphism": "Same method name, different behaviour per class. Python uses duck typing — if it has the method, it works. isinstance() to check type when needed. Prefer duck typing over type checking.",
-        "encapsulation":"_name: protected by convention. __name: name-mangled to _ClassName__name. Python doesn't enforce access control — it's convention. Use @property for controlled attribute access.",
-        # Exception handling
-        "exception":    "Built-in exceptions: ValueError,TypeError,KeyError,IndexError,AttributeError,NameError,ZeroDivisionError,FileNotFoundError,ImportError,RuntimeError,StopIteration,OverflowError,MemoryError.",
-        "try":          "try: risky code. except ErrorType as e: handle it. Multiple excepts for different errors. else: runs if no exception. finally: always runs (cleanup). Catch specific exceptions — avoid bare 'except:'.",
-        "raise":        "raise ValueError('message') throws an exception. raise re-raises current exception. Custom exceptions: class MyError(Exception): pass. raise ... from e to chain exceptions.",
-        "assert":       "assert condition, 'message' raises AssertionError if False. Disabled with -O flag. Use for invariants in development. Don't use for user input validation (use if/raise instead).",
-        # File I/O
-        "file":         "open(path, mode) opens a file. Always use 'with open(path) as f:' — auto-closes. Modes: 'r'(read),'w'(write/overwrite),'a'(append),'x'(create new),'b'(binary),'+'(read+write).",
-        "read":         "f.read() → whole file as str. f.readline() → one line. f.readlines() → list of lines. for line in f: iterates lines efficiently. f.read(n) reads n bytes/chars.",
-        "write":        "f.write(str) writes string (no auto newline — add \\n). f.writelines(list). 'w' overwrites. 'a' appends. Check file exists with os.path.exists() before overwriting.",
-        "csv":          "import csv. csv.reader(f) → rows as lists. csv.DictReader(f) → rows as dicts. csv.writer(f).writerow(row). csv.DictWriter(f,fieldnames).writerow(dict). Always open with newline=''.",
-        "json":         "import json. json.loads(str)→obj. json.dumps(obj)→str (indent=4 for pretty). json.load(f)→obj from file. json.dump(obj,f) writes to file. Only str keys in JSON dicts. Handles: str,int,float,bool,None,list,dict.",
-        "os path":      "os.path: .exists(),.isfile(),.isdir(),.join(),.basename(),.dirname(),.splitext(),.abspath(). os.listdir(). os.makedirs(path,exist_ok=True). os.remove(). os.rename(). pathlib.Path is the modern alternative.",
-        # Standard library
-        "import":       "'import module' or 'from module import name' or 'import module as alias'. __name__=='__main__' guards script code. Circular imports: restructure or use local imports. importlib for dynamic imports.",
-        "math":         "import math. math.sqrt(),floor(),ceil(),pow(),log(),log2(),log10(). math.pi,math.e,math.inf,math.nan. math.factorial(),gcd(),lcm(). math.sin(),cos(),tan() (radians). math.degrees(),radians().",
-        "random":       "import random. random.random()→[0,1). random.randint(a,b) inclusive. random.choice(seq). random.choices(seq,weights,k=n). random.shuffle(lst) in-place. random.sample(seq,k) no replacement. random.seed(n).",
-        "datetime":     "from datetime import datetime,date,timedelta. datetime.now(),date.today(). timedelta(days=7). .strftime('%Y-%m-%d %H:%M'). datetime.strptime(str,'%Y-%m-%d'). .timestamp(). Arrow library for easier datetime handling.",
-        "collections":  "Counter(iterable)→{item:count}. defaultdict(list) auto-creates missing keys. OrderedDict (less needed 3.7+). deque: fast O(1) append/pop both ends. namedtuple: tuple with named fields. ChainMap merges dicts.",
-        "itertools":    "chain(*iters),chain.from_iterable(). product(a,b). combinations(it,r). permutations(it,r). groupby(it,key). islice(it,n). repeat(x,n). accumulate(it). All return iterators — wrap in list() to see.",
-        "functools":    "reduce(func,it,initial). lru_cache() / cache() — memoisation. partial(func,*args) fixes args. wraps(func) preserves docstring in decorators. total_ordering fills in comparison methods from __eq__+one other.",
-        "re":           "import re. re.match(pat,s)→match at start. re.search(pat,s)→first match anywhere. re.findall(pat,s)→list of matches. re.sub(pat,repl,s)→replaced string. re.compile(pat) for reuse. Groups: (pattern). Flags: re.IGNORECASE.",
-        "sys":          "sys.argv[0]=script name, [1:]=CLI args. sys.exit(0)=success,non-zero=error. sys.path=module search list. sys.stdin/stdout/stderr. sys.version. sys.getrecursionlimit()/setrecursionlimit(n).",
-        "os":           "os.getcwd(),os.chdir(path). os.listdir(dir). os.makedirs(path,exist_ok=True). os.remove(file). os.rename(src,dst). os.environ['KEY'] or os.getenv('KEY','default'). os.path for path operations.",
-        "typing":       "from typing import List,Dict,Tuple,Set,Optional,Union,Any,Callable,TypeVar. Optional[str]=str|None. Union[int,str]. Type hints not enforced at runtime — use mypy to check. Python 3.10+: use list[int] directly.",
-        # Memory & performance
-        "mutable":      "Mutable: list,dict,set,bytearray — can change after creation. Immutable: int,float,str,tuple,frozenset,bytes. Gotcha: def f(x=[]): shares same list across calls. Use def f(x=None): if x is None: x=[].",
-        "reference":    "Variables are references to objects. a=b makes both point to same object. Integers and short strings may be interned (same object). For lists/dicts: copy() or [:] for shallow copy.",
-        "shallow copy": "list[:], list.copy(), dict.copy(), copy.copy() — new container, same inner objects. Nested list modification affects both copies. Use deepcopy for full independence.",
-        "deep copy":    "import copy; copy.deepcopy(obj) — fully independent copy including nested objects. Slower. Use when modifying nested structures. Handles circular references.",
-        "complexity":   "list: O(1) append, O(n) insert/search. dict/set: O(1) lookup. Sorting: O(n log n). Nested loops: O(n²). Use set/dict for fast lookup. Use deque for queue. Use heapq for priority queue.",
-        # Intermediate topics
-        "enumerate":    "enumerate(it,start=0) → (index,value) pairs. for i,val in enumerate(lst): replaces for i in range(len(lst)):. Cleaner and more Pythonic. start=1 for 1-based indexing.",
-        "unpacking":    "a,b=[1,2]. Extended: first,*rest=[1,2,3,4]. Swap: a,b=b,a. Ignore: _,useful=pair. Function args: func(*list), func(**dict). Nested: (a,b),c = (1,2),3.",
-        "slice":        "lst[start:stop:step]. Omit for defaults. lst[::-1] reverses. lst[::2] every other. Slices make shallow copies. slice() object for named slices. Strings and tuples support slicing too.",
-        "context manager":"'with' statement: with open(f) as h: auto-calls __exit__ even on exception. Create with __enter__/__exit__ methods or @contextmanager from contextlib. Use for files, locks, DB connections, temp dirs.",
-        "walrus":       "Walrus := assigns and returns: if (n:=len(lst))>10: print(n). While: while chunk:=f.read(8192): process(chunk). Python 3.8+. Avoids computing same value twice.",
-        "f-string":     "f'{expr}' embeds any expression. Format: f'{pi:.2f}', f'{n:>10}', f'{x:,}'. Debug: f'{x=}' prints 'x=value'. Multiline: use \\ or parentheses. Faster than .format() and %.",
-        "global":       "'global x' lets function read+write module-level x. Without it, assigning x in function creates new local x (even if global x exists). Avoid globals — pass as parameters instead.",
-        "nonlocal":     "'nonlocal x' lets nested function modify enclosing function's x. Without it, assignment creates new local x. Used in closures and decorators.",
-        "match":        "match value: case 1: ... case str() as s: ... case {'key':v}: ... case [first,*rest]: ... case _: (default). Python 3.10+. Structural pattern matching — more powerful than if-elif.",
-        "async":        "async def defines coroutine. await pauses until result ready. asyncio.run(main()) starts event loop. async for, async with. Use for I/O-bound concurrency. For CPU-bound: multiprocessing.",
-        "thread":       "import threading. Thread(target=func,args=(a,)). .start(),.join(). Lock() prevents race conditions. Use for I/O-bound tasks. GIL limits CPU parallelism — use multiprocessing for CPU.",
-        "process":      "import multiprocessing. Process(target=func). Pool.map(func,items) parallelises. Queue/Pipe for communication. Bypasses GIL for CPU-bound tasks. More overhead than threads.",
-        "input":        "input(prompt) reads a line from stdin as a STRING. Always convert if needed: int(input()), float(input()). Wrap in try-except for invalid input. In non-interactive code, mock with sys.stdin or patch.",
-        "format":       "str.format(): 'Hello {}'.format(name). f-strings: f'Hello {name}'. Old style: 'Hello %s' % name. Format spec: {:.2f} decimals, {:>10} right-align, {:,} thousands separator, {:b} binary.",
-        "error":        "Common errors: SyntaxError(bad syntax), IndentationError(bad indent), NameError(undefined var), TypeError(wrong type op), ValueError(right type wrong value), IndexError(bad index), KeyError(missing dict key), AttributeError(missing attr).",
-        "debug":        "Debugging: print() statements, Python debugger pdb (import pdb;pdb.set_trace()), breakpoint() (Python 3.7+). VS Code/PyCharm have visual debuggers. Read the traceback bottom-up — last line is the actual error.",
+    # ── Delegate to Week 3 dispatcher ─────────────────────────────────────
+    if _WEEK3_AVAILABLE:
+        raw = _w3_dispatch("doc_search", {
+            "keyword": keyword,
+            "version": version,
+            "max_results": max_results
+        })
+        try:
+            result = json.loads(raw)
+            return result
+        except (json.JSONDecodeError, TypeError):
+            return {"success": True, "summary": raw}
+
+    # ── Fallback: return search URL directly ───────────────────────────────
+    import urllib.parse
+    url = (
+        f"https://docs.python.org/{version}/search.html?"
+        + urllib.parse.urlencode({"q": keyword})
+    )
+    return {
+        "success": True,
+        "summary": (
+            f"Python {version} docs for '{keyword}':\n{url}\n"
+            "(Week 3 tool_dispatcher not found — showing direct URL)"
+        )
     }
 
-    kw = keyword.lower().strip()
-
-    # Pass 1: topic contains keyword or keyword contains topic
-    matches = [
-        {"topic": t, "explanation": e}
-        for t, e in python_docs.items()
-        if kw in t or t in kw
-    ]
-
-    # Pass 2: any meaningful word in topic appears in keyword
-    if not matches:
-        matches = [
-            {"topic": t, "explanation": e}
-            for t, e in python_docs.items()
-            if any(w in kw for w in t.split() if len(w) > 2)
-        ]
-
-    # Pass 3: keyword appears inside explanation text
-    if not matches:
-        matches = [
-            {"topic": t, "explanation": e}
-            for t, e in python_docs.items()
-            if kw in e.lower()
-        ]
-
-    if not matches:
-        return {
-            "success": True,
-            "results": [],
-            "message": (
-                f"No documentation found for '{keyword}'. "
-                f"Available topics: {', '.join(sorted(python_docs.keys()))}"
-            )
-        }
-
-    return {"success": True, "results": matches}
-
 
 # -----------------------------------
-# TOOL REGISTRY & SCHEMAS
+# TOOL REGISTRY
 # -----------------------------------
 
 TOOL_FUNCTIONS = {
@@ -562,10 +502,6 @@ TOOL_FUNCTIONS = {
     "doc_search": doc_search,
 }
 
-# KEY FIX: run_python schema has ONLY 'code' — no timeout_s.
-# When timeout_s was in the schema, Groq generated two separate JSON
-# objects that merged into broken JSON: {"code":"..."}{"timeout_s":15}
-# causing the 400 tool_use_failed error every time.
 TOOL_SCHEMAS = [
     {
         "type": "function",
@@ -577,7 +513,7 @@ TOOL_SCHEMAS = [
                 "do NOT pass any other arguments. "
                 "Interactive programs are handled automatically. "
                 "Missing packages are installed automatically. "
-                "Returns stdout, stderr, and the failing line number if there is an error. "
+                "Returns stdout, stderr, and the failing line number. "
                 f"Maximum {MAX_CODE_LINES} lines. "
                 "ALWAYS call this first when the student submits code."
             ),
@@ -603,16 +539,15 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "lint_code",
             "description": (
-                "Run ruff linter to find style issues, undefined names, "
-                "and unused variables. Use when code runs but may have quality problems."
+                "Check Python code for style issues, unused variables, and "
+                "common mistakes using ruff. Does NOT execute the code. "
+                "Use when student asks about code quality or best practices."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "code": {
-                        "type": "string",
-                        "description": "The Python code to lint."
-                    }
+                    "code":   {"type": "string", "description": "Python code to lint."},
+                    "select": {"type": "string", "description": "Ruff rules e.g. 'E,F,W'. Default E,F,W."}
                 },
                 "required": ["code"]
             }
@@ -623,41 +558,33 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "doc_search",
             "description": (
-                "Search 80+ Python documentation topics. Covers data types, OOP, "
-                "exceptions, file I/O, standard library, functional tools, debugging, "
-                "and intermediate Python. Use when student is confused about a concept."
+                "Search the official Python documentation by keyword. "
+                "Use when student asks how a built-in function, module, "
+                "or language feature works."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "keyword": {
-                        "type": "string",
-                        "description": "Python concept to look up. Examples: 'list', 'decorator', 'async', 'input', 'error', 'debug'."
-                    }
+                    "keyword":     {"type": "string",  "description": "Concept to look up e.g. 'enumerate'."},
+                    "version":     {"type": "string",  "description": "Python version. Default '3'."},
+                    "max_results": {"type": "integer", "description": "Max results. Default 3."}
                 },
                 "required": ["keyword"]
             }
         }
-    }
+    },
 ]
 
 
 # -----------------------------------
 # TOOL EXECUTOR
+# Validates args, drops unknown keys, never raises.
 # -----------------------------------
 
 def execute_tool(tool_name: str, tool_input: dict) -> str:
-    """
-    Route a tool call to the correct implementation.
+    import inspect
 
-    Two extra defences added here:
-      1. If tool_input is not a plain dict (e.g. the model passed a list or
-         a string), convert/reject it cleanly instead of crashing.
-      2. Only pass recognised argument names to each tool — extra keys that
-         the model invented (like 'input', 'stdin', 'timeout') are silently
-         dropped so they never cause a TypeError.
-    """
-    # Normalise: if model passed a list [ {arg1}, {arg2} ] merge into one dict
+    # Model sometimes passes a list [{arg1}, {arg2}] — merge into one dict
     if isinstance(tool_input, list):
         merged = {}
         for item in tool_input:
@@ -673,60 +600,64 @@ def execute_tool(tool_name: str, tool_input: dict) -> str:
             "success": False,
             "error": (
                 f"Unknown tool '{tool_name}'. "
-                f"Available tools: {list(TOOL_FUNCTIONS.keys())}"
+                f"Available: {list(TOOL_FUNCTIONS.keys())}"
             )
         })
 
-    # Drop any extra arguments the model invented that the function
-    # doesn't accept — prevents TypeErrors from extra keys like 'input'
-    import inspect
+    # Drop invented args the function doesn't accept
     fn     = TOOL_FUNCTIONS[tool_name]
     params = set(inspect.signature(fn).parameters.keys())
     clean  = {k: v for k, v in tool_input.items() if k in params}
 
     try:
         return json.dumps(fn(**clean))
-    except TypeError as e:
-        return json.dumps({"success": False, "error": f"Wrong arguments: {str(e)}"})
-    except Exception as e:
-        return json.dumps({"success": False, "error": f"Tool crashed: {str(e)}"})
+    except TypeError as exc:
+        return json.dumps({"success": False, "error": f"Wrong arguments: {exc}"})
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"Tool crashed: {exc}"})
 
 
 # -----------------------------------
 # SYSTEM PROMPT
 # -----------------------------------
 
-SYSTEM_PROMPT = """You are Mini-Tutor, a patient AI coding tutor for Python learners.
+_w2_status = "✓ active (AST security, memory limit, subprocess isolation)" if _WEEK2_AVAILABLE else "✗ NOT FOUND — fallback mode (no AST security)"
+_w3_status = "✓ active (ruff linter, Python docs search)" if _WEEK3_AVAILABLE else "✗ NOT FOUND — fallback mode"
+
+SYSTEM_PROMPT = f"""You are Mini-Tutor, a patient AI coding tutor for Python learners.
 Your goal is to help students UNDERSTAND bugs — never to write fixes for them.
 
-TOOL CALLING RULES — READ CAREFULLY:
+SANDBOX STATUS:
+- Week 2 security sandbox: {_w2_status}
+- Week 3 tools (lint/docs): {_w3_status}
+
+TOOL CALLING RULES:
 - run_python takes EXACTLY ONE argument: "code". Nothing else.
-- Never pass "input", "stdin", "timeout", or any other argument to run_python.
-- Never pass a list of arguments — always pass a single JSON object: {"code": "..."}
-- exec() and eval() are blocked in the sandbox — if student code contains them,
-  explain why they are unavailable and ask the student to rewrite without them.
+- Never pass "input", "stdin", "timeout", or any other argument.
+- Always pass a single JSON object: {{"code": "..."}}
+- exec() and eval() are blocked in the sandbox.
 
 TUTOR RULES:
 1. When a student submits code, ALWAYS call run_python first.
-2. The run_python result includes a "line_number" field — always cite it in Diagnosis.
-3. If input() calls were present, they were auto-mocked — mention this briefly.
-4. NEVER reveal the corrected code. One Socratic question per reply only.
-5. Structure every reply EXACTLY like this:
+2. The result includes "line_number" — always cite it in Diagnosis.
+3. NEVER reveal the corrected code. One Socratic question per reply.
+4. Structure every reply EXACTLY like this:
 
 Diagnosis: (one sentence — what is wrong, citing the exact line number)
 Question: (one guiding question pointing toward the issue)
 Next Step: (one small concrete action)
 
-6. If code runs but output is wrong, ask what the student expected vs what ran.
-7. Use doc_search when student is confused about a concept.
-8. Use lint_code when code runs but quality could be improved.
-9. Tone: warm, encouraging, never condescending.
-10. Maximum 8 tool calls per turn.
-11. Use plain text labels — no ** markdown bold **."""
+5. If code runs but output is wrong, ask what the student expected.
+6. Use doc_search when student is confused about a concept.
+7. Use lint_code when code runs but quality could be improved.
+8. Tone: warm, encouraging, never condescending.
+9. Maximum {MAX_TOOL_CALLS} tool calls per turn.
+10. Use plain text labels — no ** markdown bold **."""
 
 
 # -----------------------------------
 # AGENT LOOP
+# Unchanged from previous version — this is Week 4's own concern.
 # -----------------------------------
 
 def run_tutor_agent(
@@ -737,15 +668,12 @@ def run_tutor_agent(
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         return (
-            "Configuration error: GROQ_API_KEY is missing from your .env file. "
-            "Create a .env file in the project root with:\nGROQ_API_KEY=your_key_here",
+            "Configuration error: GROQ_API_KEY is missing from your .env file.\n"
+            "Create a .env file with: GROQ_API_KEY=your_key_here",
             conversation_history or []
         )
 
-    client = OpenAI(
-        api_key=api_key,
-        base_url="https://api.groq.com/openai/v1"
-    )
+    client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
 
     if conversation_history is None:
         conversation_history = []
@@ -760,9 +688,6 @@ def run_tutor_agent(
     final_reply     = ""
 
     while True:
-        # Retry wrapper for transient failures (Week 3 robust_tool_loop pattern):
-        # auth and bad-model errors fail identically every time, so they are
-        # NOT retried. Rate limits and network errors get retried with backoff.
         response   = None
         last_error = ""
 
@@ -775,30 +700,20 @@ def run_tutor_agent(
                     messages=messages
                 )
                 break
-
             except Exception as exc:
                 exc_str = str(exc).lower()
 
                 if "401" in exc_str or "authentication" in exc_str or "api key" in exc_str:
-                    return (
-                        "Authentication failed — check your GROQ_API_KEY in .env.",
-                        messages[1:]
-                    )
+                    return ("Authentication failed — check your GROQ_API_KEY in .env.", messages[1:])
 
                 if "model" in exc_str and ("not found" in exc_str or "deprecated" in exc_str):
-                    return (
-                        f"Model '{GROQ_MODEL}' is unavailable. Update GROQ_MODEL in config.",
-                        messages[1:]
-                    )
+                    return (f"Model '{GROQ_MODEL}' is unavailable. Update GROQ_MODEL in config.", messages[1:])
 
-                # 400 tool_use_failed — the model generated a malformed tool call.
-                # Convert to a friendly message instead of showing raw API errors.
                 if "400" in exc_str or "tool_use_failed" in exc_str or "tool call validation" in exc_str:
                     return (
                         "I had trouble processing that input. "
-                        "This sometimes happens with code containing special characters "
-                        "like exec(), eval(), or complex escape sequences.\n\n"
-                        "Try rephrasing your question, or paste just the relevant snippet.",
+                        "This sometimes happens with exec(), eval(), or complex escape sequences.\n\n"
+                        "Try rephrasing, or paste just the relevant snippet.",
                         messages[1:]
                     )
 
@@ -820,20 +735,14 @@ def run_tutor_agent(
         message = choice.message
         finish  = choice.finish_reason
 
-        # Convert SDK object → plain dict (prevents 400 errors on subsequent turns)
-        assistant_dict: dict = {
-            "role":    "assistant",
-            "content": message.content or ""
-        }
+        # Convert SDK object → plain dict (prevents 400 on subsequent turns)
+        assistant_dict: dict = {"role": "assistant", "content": message.content or ""}
         if message.tool_calls:
             assistant_dict["tool_calls"] = [
                 {
                     "id":       tc.id,
                     "type":     "function",
-                    "function": {
-                        "name":      tc.function.name,
-                        "arguments": tc.function.arguments
-                    }
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments}
                 }
                 for tc in message.tool_calls
             ]
@@ -847,10 +756,7 @@ def run_tutor_agent(
             for tc in message.tool_calls:
                 tool_call_count += 1
                 if tool_call_count > MAX_TOOL_CALLS:
-                    result_content = json.dumps({
-                        "success": False,
-                        "error": "Tool call limit reached."
-                    })
+                    result_content = json.dumps({"success": False, "error": "Tool call limit reached."})
                 else:
                     try:
                         args = json.loads(tc.function.arguments)
@@ -859,9 +765,7 @@ def run_tutor_agent(
                     result_content = execute_tool(tc.function.name, args)
 
                 messages.append({
-                    "role":         "tool",
-                    "tool_call_id": tc.id,
-                    "content":      result_content
+                    "role": "tool", "tool_call_id": tc.id, "content": result_content
                 })
         else:
             final_reply = "I ran into an unexpected state. Please try submitting your code again."
@@ -872,14 +776,27 @@ def run_tutor_agent(
 
 
 # -----------------------------------
+# STARTUP: report which weeks are loaded
+# -----------------------------------
+
+def _print_startup_status() -> None:
+    print("\n" + "=" * 55)
+    print("  MINI-TUTOR v2  —  Week 2+3+4 Integration")
+    print("=" * 55)
+    w2 = "✓ Week 2 sandbox (AST security)" if _WEEK2_AVAILABLE else "✗ Week 2 NOT FOUND — fallback mode"
+    w3 = "✓ Week 3 tools (lint, doc_search)" if _WEEK3_AVAILABLE else "✗ Week 3 NOT FOUND — fallback mode"
+    print(f"  {w2}")
+    print(f"  {w3}")
+    print("=" * 55)
+
+
+# -----------------------------------
 # CLI ENTRY POINT
 # -----------------------------------
 
 if __name__ == "__main__":
-    print("\n" + "=" * 55)
-    print("  MINI-TUTOR  —  Fully Fixed  —  CLI Mode")
-    print("  Type 'quit' to exit.")
-    print("=" * 55)
+    _print_startup_status()
+    print("  Type 'quit' to exit.\n")
 
     history = []
     while True:
@@ -888,10 +805,13 @@ if __name__ == "__main__":
 
         lines, blank_count = [], 0
         while True:
-            line = input()
+            try:
+                line = input()
+            except EOFError:
+                break
             if line.lower().strip() == "quit":
                 print("\nGoodbye! Keep coding.")
-                exit()
+                sys.exit(0)
             if line == "":
                 blank_count += 1
             else:
