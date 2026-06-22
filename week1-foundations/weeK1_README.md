@@ -1,292 +1,159 @@
 # Week 1 — Foundations
 
-Week 1 focuses on building the core foundations required for developing AI-powered applications and coding tutors.
+## Overview
 
-This week covers:
-- Python basics
-- Functions
-- Debugging
-- File handling
-- AI API integration
-- Prompt engineering
+Week 1 focuses on building the fundamental skills required to create an AI-powered coding tutor. The goal of this week is to become familiar with Python, environment setup, API integration, prompt construction, and model parameter tuning before moving on to more advanced concepts such as prompt engineering, tool use, and agent development.
 
-The goal was to move from:
-- beginner Python programming
-
-to:
-- building the first AI tutor prompts.
+This week serves as the foundation for all subsequent weeks in the Coding Tutor Agent project.
 
 ---
 
-# Goals
+## Learning Objectives
 
-- Learn Python fundamentals
-- Understand debugging
-- Work with functions and files
-- Integrate AI APIs
-- Build beginner-friendly tutor prompts
-- Learn prompt engineering basics
+By the end of Week 1, you should be able to:
 
----
-
-# Concepts Learned
-
-- Variables
-- Data types
-- Lists & dictionaries
-- Conditions
-- Loops
-- Functions
-- Error handling
-- File handling
-- API integration
-- Environment variables
-- Prompt engineering
+* Set up a Python development environment
+* Configure and use API keys securely
+* Make API calls to a Large Language Model (LLM)
+* Understand system prompts and user prompts
+* Experiment with temperature and model behavior
+* Process and display model responses
+* Build simple command-line AI applications
 
 ---
 
-# Week 1 File Structure
+## Topics Covered
+
+### 1. Environment Setup
+
+Learn how to:
+
+* Create and activate virtual environments
+* Install required Python packages
+* Configure environment variables
+* Store API keys securely using `.env`
+
+---
+
+### 2. First API Calls
+
+Create basic programs that:
+
+* Connect to the Groq API
+* Send prompts to an LLM
+* Receive and display responses
+* Handle common API errors
+
+---
+
+### 3. Prompt Construction
+
+Explore how prompts influence model behavior:
+
+* System prompts
+* User prompts
+* Role-based prompting
+* Structured instructions
+
+Example:
 
 ```text
-week1-foundations/
-│
-├── day2-python-basics/
-│   ├── basics.py
-│   └── student.py
-│
-├── day3-functions-debugging/
-│   ├── functions.py
-│   └── notes.txt
-│
-├── day4-llm-api/
-│   ├── first_llm.py
-│   ├── groq_test.py
-│   ├── temperature_test.py
-│   └── tokens_test.py
-│
-└── day5-prompt-engineering/
-    ├── tutor_prompt.py
-    └── notes.txt
+System: You are a helpful Python tutor.
+
+User: Explain what a Python list is.
 ```
 
 ---
 
-# Day 1 — Environment Setup
+### 4. Temperature Experiments
 
-## Focus
-Preparing the development environment.
+Investigate how temperature affects responses.
 
-## Setup Completed
-- Ubuntu development setup
-- Git & GitHub configuration
-- VS Code setup
-- Python virtual environment
-- AI libraries installation
+Lower temperature:
 
-## Technologies Installed
-- Python
-- Git
-- Streamlit
-- LangChain
-- LangGraph
-- FastAPI
-- ChromaDB
+* More deterministic
+* More consistent
+* Better for tutoring
 
-## Learned
-- Virtual environments
-- Package installation
-- Git basics
-- Project setup workflow
+Higher temperature:
 
----
+* More creative
+* More varied
+* Better for brainstorming
 
-# Day 2 — Python Basics
-
-## Folder
-`day2-python-basics`
-
-## Files
-- `basics.py`
-- `student.py`
-
-## Focus
-Learning Python fundamentals.
-
-## Topics Covered
-- Variables
-- Data types
-- Conditions
-- Loops
-- Lists
-- Dictionaries
-
-## Programs Created
-- Calculator
-- Even/Odd checker
-- Student marks program
-- List iteration exercises
-
-## Learned
-- Writing Python programs
-- Using loops and conditions
-- Working with collections
-
----
-
-# Day 3 — Functions & Debugging
-
-## Folder
-`day3-functions-debugging`
-
-## Files
-- `functions.py`
-- `notes.txt`
-
-## Focus
-Learning reusable code and debugging.
-
-## Topics Covered
-- Functions
-- Parameters
-- Return values
-- Error handling
-- File handling
-
-## Errors Practiced
-- NameError
-- IndexError
-- TypeError
-
-## Learned
-- Reading Python errors
-- Writing reusable functions
-- Debugging workflow
-- File operations
-
----
-
-# Day 4 — LLM API Integration
-
-## Folder
-`day4-llm-api`
-
-## Files
-- `first_llm.py`
-- `groq_test.py`
-- `temperature_test.py`
-- `tokens_test.py`
-
-## Focus
-Connecting Python with AI APIs.
-
-## Topics Covered
-- Groq API integration
-- OpenAI-compatible SDK
-- API key handling
-- Temperature settings
-- Token control
-
-## Learned
-- Sending prompts to AI models
-- Secure API usage
-- AI response generation
-- Model parameter tuning
-
----
-
-# Day 5 — Prompt Engineering
-
-## Folder
-`day5-prompt-engineering`
-
-## Files
-- `tutor_prompt.py`
-- `notes.txt`
-
-## Focus
-Designing beginner-friendly AI tutor behavior.
-
-## Topics Covered
-- Prompt engineering
-- System prompts
-- Role prompting
-- Socratic questioning
-- AI behavior control
-
-## Example Tutor Prompt
+Example:
 
 ```python
-prompt = """
-You are a beginner-friendly Python tutor.
-
-Rules:
-- Never directly give the answer
-- Ask guiding questions
-- Encourage the student
-- Explain concepts simply
-
-Student Question:
-"My Python loop is not working."
-"""
+temperature = 0.2
 ```
 
-## Learned
-- Designing tutor-style AI behavior
-- Guiding instead of solving
-- Controlling AI responses using prompts
-
----
-
-# Technologies Used
-
-| Component | Tool |
-|---|---|
-| Programming Language | Python |
-| Version Control | Git & GitHub |
-| AI API | Groq API |
-| SDK | OpenAI Python SDK |
-| Environment Variables | python-dotenv |
-
----
-
-# Example Progression
-
-## Beginning of Week
+vs
 
 ```python
-print("Hello World")
+temperature = 1.0
 ```
-
-## End of Week
-
-```python
-prompt = """
-You are a Python tutor.
-Guide students instead of giving answers.
-"""
-```
-
-This marks the transition from:
-- basic Python programming
-
-to:
-- AI-powered tutoring systems.
 
 ---
 
-# Key Takeaways
+### 5. Response Processing
 
-Week 1 builds the foundation for the entire project.
+Learn how to:
 
-The focus shifts from:
-- learning Python
+* Extract model responses
+* Format output for users
+* Handle empty responses
+* Display errors gracefully
 
-to:
-- building intelligent AI tutoring systems.
+---
 
-This week prepares the groundwork for:
-- prompt engineering
-- AI agents
-- tool calling
-- full AI tutor applications
-```
+## Skills Developed
+
+During Week 1, the following skills were practiced:
+
+* Python fundamentals
+* API integration
+* Environment management
+* Prompt design
+* LLM parameter tuning
+* Command-line application development
+
+---
+
+## Key Takeaways
+
+* Prompt quality significantly affects model responses.
+* System prompts provide consistent behavior.
+* Temperature controls creativity and determinism.
+* Secure API key management is essential.
+* Small experiments help build intuition for LLM behavior.
+
+---
+
+## Connection to Future Weeks
+
+Week 1 establishes the foundation for:
+
+### Week 2 — Prompt Engineering
+
+* Few-shot prompting
+* Socratic tutoring
+* Structured outputs
+* Streaming responses
+
+### Week 3 — Tool Use
+
+* Running Python code
+* Linting and validation
+* Tool-calling agents
+
+### Week 4 — Mini Tutor
+
+* Combining prompts, tools, and execution
+* Building an interactive coding tutor
+* Streamlit user interface
+
+---
+
+## Outcome
+
+At the end of Week 1, a series of small Python programs were created to explore LLM interaction, prompt design, and API usage. These experiments provide the technical foundation for the more advanced tutoring system developed in later weeks.
