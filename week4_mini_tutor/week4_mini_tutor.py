@@ -268,6 +268,10 @@ _builtins.input = _mock_input
 
 """
 
+# Lines injected by the preamble — subtracted from reported line numbers
+# so the tutor always cites the student's original line, not the offset line.
+_INPUT_MOCK_LINE_OFFSET: int = _INPUT_MOCK_PREAMBLE.count("\n")
+
 
 def _has_input_calls(code: str) -> bool:
     return bool(_INPUT_RE.search(code))
@@ -346,12 +350,26 @@ def _wrap_data_as_code(text: str, kind: str) -> str:
 # HELPER — extract line number from a traceback string
 # ============================================================
 
-def _extract_line_number(traceback_text: str) -> int:
-    """Return the last 'line N' value in a traceback, or 0 if none."""
+def _extract_line_number(traceback_text: str, offset: int = 0) -> int:
+    """Return the last 'line N' value in a traceback, or 0 if none.
+
+    Parameters
+    ----------
+    traceback_text:
+        Raw stderr / traceback string from the sandbox.
+    offset:
+        Number of injected lines to subtract from the result so the
+        reported line always refers to the student's original code.
+        Pass _INPUT_MOCK_LINE_OFFSET when input() was mocked.
+    """
     if not traceback_text:
         return 0
     matches = _LINE_NUM_RE.findall(traceback_text)
-    return int(matches[-1]) if matches else 0
+    if not matches:
+        return 0
+    raw_line = int(matches[-1])
+    corrected = raw_line - offset
+    return max(corrected, 1)  # never report line 0 or negative
 
 
 # ============================================================
@@ -433,7 +451,10 @@ def run_python(code: str) -> RunPythonResult:
             "error_type":    result.error_type,
             "error_message": result.error_message,
             "input_mocked":  input_mocked,
-            "line_number":   _extract_line_number(result.output),
+            "line_number":   _extract_line_number(
+                result.output,
+                offset=_INPUT_MOCK_LINE_OFFSET if input_mocked else 0,
+            ),
             "note":          note,
         }
 
@@ -485,7 +506,10 @@ def run_python(code: str) -> RunPythonResult:
         "error_type":    error_type,
         "error_message": error_message,
         "input_mocked":  input_mocked,
-        "line_number":   _extract_line_number(stderr),
+        "line_number":   _extract_line_number(
+            stderr,
+            offset=_INPUT_MOCK_LINE_OFFSET if input_mocked else 0,
+        ),
         "note":          note,
     }
 

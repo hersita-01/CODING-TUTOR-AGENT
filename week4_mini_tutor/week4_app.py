@@ -10,7 +10,8 @@
 
 import streamlit as st
 from dotenv import load_dotenv
-from week4_mini_tutor import run_tutor_agent, MAX_CODE_LINES
+from week4_mini_tutor import run_tutor_agent
+from config import MAX_CODE_LINES
 
 load_dotenv()
 
@@ -486,7 +487,7 @@ else:
             </div>
             """, unsafe_allow_html=True)
         else:
-            coloured = _colour_labels(turn["content"])
+            coloured = _colour_labels(_strip_tool_traces(turn["content"]))
             st.markdown(f"""
             <div class="bubble-wrap">
               <div class="bubble-label-tutor">🎓 Tutor</div>
@@ -569,7 +570,7 @@ elif submitted and not user_input.strip():
 # -----------------------------------
 
 with st.sidebar:
-    st.markdown("### Mini-Tutor v1")
+    st.markdown("### Mini-Tutor v2")
     st.markdown(
         "An AI coding tutor that runs your code, diagnoses bugs, "
         "and asks Socratic questions to help you think through the fix."
@@ -580,6 +581,19 @@ with st.sidebar:
     st.markdown("🔧 `run_python` — executes code, auto-installs packages")
     st.markdown("🔍 `lint_code` — checks for style issues")
     st.markdown("📖 `doc_search` — 80+ Python concepts")
+    st.markdown("---")
+
+    # Show which weeks loaded successfully
+    try:
+        from week4_mini_tutor import _WEEK2_AVAILABLE, _WEEK3_AVAILABLE
+        w2 = "✓ Week 2 sandbox active" if _WEEK2_AVAILABLE else "✗ Week 2 NOT FOUND"
+        w3 = "✓ Week 3 tools active"   if _WEEK3_AVAILABLE else "✗ Week 3 NOT FOUND"
+        w2_color = "teal" if _WEEK2_AVAILABLE else "#FF6B6B"
+        w3_color = "teal" if _WEEK3_AVAILABLE else "#FF6B6B"
+        st.markdown(f'<span style="color:{w2_color};font-size:12px">{w2}</span>', unsafe_allow_html=True)
+        st.markdown(f'<span style="color:{w3_color};font-size:12px">{w3}</span>', unsafe_allow_html=True)
+    except Exception:
+        pass
     st.markdown("---")
 
     st.markdown("**Tips**")
