@@ -254,8 +254,8 @@ _INPUT_MOCK_PREAMBLE = """\
 import builtins as _builtins
 _input_call_count = 0
 _INPUT_RESPONSES = [
-    "Alice", "1000", "Bob", "500", "1", "2", "3", "test", "yes", "no",
-    "0", "10", "hello", "world", "quit", "exit", "6"
+    "5", "10", "1000", "1", "2", "3", "500", "0", "-1", "6",
+    "yes", "no", "quit", "exit", "hello", "world", "Alice", "Bob", "test",
 ]
 def _mock_input(prompt=""):
     global _input_call_count
@@ -492,11 +492,19 @@ def run_python(code: str) -> RunPythonResult:
         }
 
     stderr = proc.stderr.strip()
-    # Best-effort parse of "ErrorType: message" from the last traceback line
+    # Best-effort parse of "ErrorType: message" from the traceback.
+    # Scan ALL lines (not just the last) for a token that looks like a real
+    # Python exception class name (CamelCase + "Error"/"Warning"/"Exception"/etc.)
+    # so that "File '...', line N" lines are never misread as the error type.
+    _EXC_LINE_RE = re.compile(
+        r'^([A-Z][a-zA-Z0-9_]*(?:Error|Warning|Exception|Interrupt|Exit|Stop))\s*:\s*(.*)'
+    )
     error_type, error_message = "RuntimeError", stderr
-    last_line = (stderr.splitlines() or [""])[-1]
-    if ": " in last_line:
-        error_type, error_message = last_line.split(": ", 1)
+    for _line in reversed((stderr.splitlines() or [""])):
+        _m = _EXC_LINE_RE.match(_line.strip())
+        if _m:
+            error_type, error_message = _m.group(1), _m.group(2)
+            break
 
     return {
         "success":       False,
