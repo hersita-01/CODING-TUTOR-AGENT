@@ -1,259 +1,347 @@
-# Week 3 — Tool Use
+\# Week 3 — Tool Use
 
-Week 3 focuses on teaching the AI tutor how to safely use tools instead of guessing outputs.
+## Overview
 
-This is the week where the tutor evolves from:
-- prompt-based responses
+Week 3 focuses on one of the most important concepts in modern AI systems: **tool use**.
 
-to:
-- real tool-using AI agents.
+Until this point, the tutor relied entirely on prompting and language model reasoning. In Week 3, the tutor gains the ability to interact with external tools, execute Python code, analyze results, and make decisions based on real program behavior rather than guesses.
 
-The tutor can now:
-- execute Python code
-- lint student code
-- search Python documentation
-- safely handle runtime failures
+This marks the transition from a conversational AI assistant to an AI-powered coding agent.
 
 ---
 
-# Goals
+## Learning Objectives
 
-- Learn AI function/tool calling
-- Build tool schemas
-- Implement a ReAct-style tool loop
-- Safely execute Python code
-- Handle runtime failures and infinite loops
-- Build defensive AI systems
+By the end of Week 3, you should be able to:
 
----
-
-# Concepts Learned
-
-- Tool calling
-- Function schemas
-- ReAct loops
-- Sandboxed execution
-- Subprocess handling
-- Timeout protection
-- Runtime analysis
-- Multi-tool orchestration
-- Defensive programming
+* Understand the concept of tool-calling agents
+* Design Python functions as AI tools
+* Execute student code safely
+* Analyze execution results
+* Perform linting and validation
+* Build multi-tool workflows
+* Connect LLM reasoning with programmatic actions
 
 ---
 
-# Week 3 File Structure
+## Why Tool Use Matters
 
-```text
-week3-tool-use/
-│
-├── day1_tool_concepts.py
-├── day2_tool_schema.py
-├── day3_tool_loop.py
-├── day4_multi_tools.py
-├── day5_safe_tool_agent.py
-└── README.md
-```
+Without tools, an AI tutor can only infer what code does.
 
----
-
-# Day 1 — Tool Calling Concepts
-
-## File
-- `day1_tool_concepts.py`
-
-## Focus
-Understanding how AI models call tools/functions.
-
-## Learned
-- Function calling basics
-- AI → tool interaction flow
-- ReAct agent concepts
-- Why tools are needed
-
-## Key Idea
-
-Instead of guessing outputs, the AI should:
-1. choose a tool
-2. run the tool
-3. observe results
-4. respond using real outputs
-
----
-
-# Day 2 — Tool Schemas
-
-## File
-- `day2_tool_schema.py`
-
-## Focus
-Designing tool definitions in JSON format.
-
-## Built Tool Schemas
-- `run_python`
-- `lint_code`
-- `doc_search`
-
-## Learned
-- JSON schema design
-- Parameter validation
-- Tool descriptions
-- AI-readable interfaces
-
----
-
-# Day 3 — Tool Loop
-
-## File
-- `day3_tool_loop.py`
-
-## Focus
-Building the ReAct-style execution loop.
-
-## Features
-- AI selects tool
-- Python subprocess execution
-- Tool result returned to model
-- Runtime observation
-
-## Learned
-- ReAct architecture
-- Tool execution flow
-- Runtime analysis
-- Subprocess sandboxing
-
----
-
-# Day 4 — Multiple Tools
-
-## File
-- `day4_multi_tools.py`
-
-## Focus
-Adding multiple tools and routing logic.
-
-## Tools Added
-
-### `run_python`
-Safely executes Python code.
-
-### `lint_code`
-Runs Ruff linting checks.
-
-### `doc_search`
-Searches Python concept explanations.
-
-## Learned
-- Multi-tool orchestration
-- Tool routing
-- Runtime + static analysis combination
-
----
-
-# Day 5 — Safe Tool Agent
-
-## File
-- `day5_safe_tool_agent.py`
-
-## Focus
-Making the AI tutor safer and more reliable.
-
-## Features
-- Infinite loop protection
-- Hard execution timeout
-- Missing argument handling
-- Invalid tool handling
-- Safer subprocess execution
-
-## Learned
-- Defensive programming
-- AI safety basics
-- Fault tolerance
-- Runtime protection
-
----
-
-# Tool Flow Architecture
-
-```text
-Student Input
-      ↓
-AI Agent
-      ↓
-Tool Selection
-      ↓
-Tool Execution
-      ↓
-Tool Result
-      ↓
-AI Explanation
-```
-
----
-
-# Example Workflow
-
-## Student Code
+Example:
 
 ```python
 numbers = [1, 2, 3]
-print(numbers[10])
+print(numbers[5])
 ```
 
-## Tool Used
-`run_python`
+A language model can predict that this will likely cause an error.
 
-## Runtime Result
+However, with tool use, the tutor can:
+
+1. Run the code
+2. Capture the actual error
+3. Analyze the traceback
+4. Generate targeted guidance
+
+This allows the tutor to work from facts instead of assumptions.
+
+---
+
+## Topics Covered
+
+### Day 1 — Building Your First Tool
+
+Introduction to tool-calling concepts.
+
+Goals:
+
+* Understand how tools extend LLM capabilities
+* Design simple Python helper functions
+* Connect tool outputs to model reasoning
+
+Key idea:
+
 ```text
-IndexError: list index out of range
+User Request
+      │
+      ▼
+LLM
+      │
+      ▼
+Tool
+      │
+      ▼
+Result
+      │
+      ▼
+LLM Response
 ```
 
-## Tutor Response
+---
+
+### Day 2 — Code Execution Tools
+
+Building tools capable of running student programs.
+
+Features:
+
+* Execute Python code
+* Capture stdout
+* Capture stderr
+* Return structured results
+
+Example workflow:
+
+```text
+Student Code
+      │
+      ▼
+run_python()
+      │
+      ▼
+Execution Result
+      │
+      ▼
+Tutor Analysis
+```
+
+---
+
+### Day 3 — Linting Tools
+
+Introduction to static code analysis.
+
+Goals:
+
+* Detect style issues
+* Identify common mistakes
+* Provide early feedback before execution
+
+Examples:
+
+* Missing indentation
+* Naming issues
+* Unused variables
+* Formatting problems
+
+---
+
+### Day 4 — Multi-Tool Workflows
+
+Combining multiple tools into a single tutoring process.
+
+The tutor can:
+
+1. Validate code
+2. Run linting
+3. Execute the program
+4. Collect outputs
+5. Generate educational feedback
+
+Workflow:
+
+```text
+Student Code
+      │
+      ▼
+Validation Tool
+      │
+      ▼
+Lint Tool
+      │
+      ▼
+Execution Tool
+      │
+      ▼
+Tutor Response
+```
+
+---
+
+### Day 5 — Safe Tool Agent
+
+The culmination of Week 3.
+
+A complete tool-using tutor capable of:
+
+* Running code safely
+* Detecting execution errors
+* Performing validation
+* Producing structured educational guidance
+
+This serves as the direct precursor to the Week 4 Mini Tutor.
+
+---
+
+## Core Tools Developed
+
+### 1. Python Execution Tool
+
+Purpose:
+
+* Run student code
+* Capture output
+* Capture exceptions
+* Return structured execution results
+
+Example:
+
+```python
+print("Hello World")
+```
+
+Output:
+
+```text
+Hello World
+```
+
+---
+
+### 2. Linting Tool
+
+Purpose:
+
+* Analyze source code without running it
+* Detect common quality issues
+* Improve code readability
+
+Benefits:
+
+* Faster feedback
+* Reduced debugging effort
+* Better coding practices
+
+---
+
+### 3. Validation Tool
+
+Purpose:
+
+* Check code before execution
+* Prevent invalid inputs
+* Improve system robustness
+
+Examples:
+
+* Empty code detection
+* Syntax checking
+* Security checks
+
+---
+
+## Agent Architecture
+
+The Week 3 tutor follows a simple agent pattern:
+
+```text
+Student Request
+        │
+        ▼
+     LLM Agent
+        │
+        ▼
+Tool Selection
+        │
+        ▼
+Tool Execution
+        │
+        ▼
+Tool Results
+        │
+        ▼
+Educational Response
+```
+
+The agent decides which tool to use and incorporates the results into its response.
+
+---
+
+## Educational Design
+
+A major goal of Week 3 is preserving the educational philosophy established in Week 2.
+
+The tutor does not simply report errors.
+
+Instead, it:
+
+* Diagnoses the issue
+* Explains the underlying concept
+* Uses Socratic questioning
+* Encourages independent problem-solving
+
+Example format:
 
 ```text
 Diagnosis:
-You are trying to access a list position that does not exist.
+The program is attempting to access a list index that does not exist.
 
 Question:
-How many elements are actually inside the list?
+What is the highest valid index in this list?
 
 Next Step:
-Check the valid index range for the list.
+Trace the final loop iteration manually and check which index is being accessed.
 ```
 
 ---
 
-# Safety Rule
+## Skills Developed
 
-Never execute student code inside the main Python process.
+During Week 3, the following skills were practiced:
 
-Always use:
-- subprocess
-- hard timeouts
-- sandboxing
-
-to prevent:
-- infinite loops
-- crashes
-- unsafe execution
-
----
-
-# Technologies Used
-
-| Component | Tool |
-|---|---|
-| Programming Language | Python |
-| Sandbox Execution | subprocess |
-| Linting | Ruff |
-| AI Integration | Groq API |
-| SDK | OpenAI Python SDK |
+* Tool design
+* Agent architecture
+* Code execution workflows
+* Static analysis
+* Error handling
+* Structured data processing
+* Educational feedback generation
+* AI application engineering
 
 ---
 
-# Key Takeaway
+## Key Takeaways
 
-Week 3 is where the project evolves from:
-- AI chatting
+* LLMs become significantly more capable when connected to tools.
+* Tool outputs provide reliable facts for reasoning.
+* Execution results are more trustworthy than model guesses.
+* Multi-tool workflows enable richer tutoring experiences.
+* Educational guidance remains important even when tools provide exact answers.
 
-to:
-- real AI agent systems that can observe and reason using tools.
+---
+
+## Connection to Future Weeks
+
+### Week 1 — Foundations
+
+Provided:
+
+* Python fundamentals
+* API integration
+* Prompt basics
+
+### Week 2 — Prompt Engineering
+
+Provided:
+
+* Socratic tutoring
+* Structured outputs
+* Educational prompting
+
+### Week 4 — Mini Tutor
+
+Week 4 combines:
+
+* Prompt engineering
+* Tool use
+* Safe code execution
+* Interactive UI
+
+into a complete AI-powered coding tutor capable of assisting students through the debugging process.
+
+---
+
+## Outcome
+
+At the end of Week 3, the tutor evolves from a prompt-driven assistant into a tool-using AI agent capable of executing code, analyzing results, and generating educational feedback based on real program behavior. This week establishes the technical foundation for the fully integrated tutoring system built in Week 4.
