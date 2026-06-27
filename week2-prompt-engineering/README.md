@@ -1,357 +1,267 @@
-# AI Coding Tutor Agent
-
-An AI-powered coding tutor that helps beginner programmers learn Python through guided debugging, Socratic questioning, safe code execution, and AI-assisted explanations.
-
-The tutor does not directly give answers.  
-Instead, it helps students think through bugs step-by-step.
-
----
-
-# Project Goal
-
-The goal of this project is to build a modern AI coding tutor capable of:
-
-- Understanding beginner Python mistakes
-- Running student code safely
-- Explaining runtime errors
-- Asking guiding questions
-- Using tools instead of guessing
-- Teaching programming concepts interactively
-
-This project evolves week-by-week from:
-- Python foundations
-- Prompt engineering
-- AI tool use
-- Full AI tutor applications
-
----
-
-# Features
-
-- Beginner-friendly AI tutor
-- Guided debugging workflow
-- Socratic questioning
-- Safe Python execution sandbox
-- Ruff linting integration
-- Python documentation search
-- Structured AI outputs
-- Streaming responses
-- Tool-calling AI agents
-- Runtime error analysis
-- Infinite loop protection
-- Streamlit frontend UI
-
----
-
-# Technologies Used
-
-| Category | Tools |
-|---|---|
-| Programming Language | Python |
-| AI API | Groq API |
-| AI SDK | OpenAI Python SDK |
-| Frontend UI | Streamlit |
-| Linting | Ruff |
-| Environment Variables | python-dotenv |
-| Sandbox Execution | subprocess |
-| Version Control | Git & GitHub |
-
----
-
-# Complete Project Structure
-
-```text
-coding-tutor-agent/
-│
-├── week1-foundations/
-│   ├── README.md
-│   │
-│   ├── day2-python-basics/
-│   │   ├── basics.py
-│   │   └── student.py
-│   │
-│   ├── day3-functions-debugging/
-│   │   ├── functions.py
-│   │   └── notes.txt
-│   │
-│   ├── day4-llm-api/
-│   │   ├── first_llm.py
-│   │   ├── groq_test.py
-│   │   ├── temperature_test.py
-│   │   └── tokens_test.py
-│   │
-│   └── day5-prompt-engineering/
-│       ├── tutor_prompt.py
-│       └── notes.txt
-│
-├── week2-prompt-engineering/
-│   ├── README.md
-│   ├── prompt_library.md
-│   │
-│   ├── day1-bug-explainer/
-│   │   ├── bug_explainer.py
-│   │   └── notes.md
-│   │
-│   ├── day2-few-shot/
-│   │   ├── few_shot_bug_explainer.py
-│   │   └── notes.md
-│   │
-│   ├── day3-socratic/
-│   │   ├── friendly_tutor.py
-│   │   ├── chain_of_thought_tutor.py
-│   │   ├── strict_socratic_mode.py
-│   │   ├── safe_python_runner.py
-│   │   ├── socratic_hint_generator.py
-│   │   └── README.md
-│   │
-│   ├── day4-structured-output/
-│   │   ├── structured_tutor_response.py
-│   │   └── notes.md
-│   │
-│   └── day5-streaming-cost/
-│       ├── streaming_tutor.py
-│       └── notes.md
-│
-├── week3-tool-use/
-│   ├── README.md
-│   ├── day1_tool_concepts.py
-│   ├── day2_tool_schema.py
-│   ├── day3_tool_loop.py
-│   ├── day4_multi_tools.py
-│   └── day5_safe_tool_agent.py
-│
-├── week4-mini-tutor/
-│   ├── week4_mini_tutor.py
-│   ├── week4_app.py
-│   ├── week4_README.md
-│   └── .env
-│
-├── tutor-env/
-├── .gitignore
-└── README.md
-```
-
----
-
-# Weekly Progression
-
-| Week | Focus |
-|---|---|
-| Week 1 | Python foundations & AI API basics |
-| Week 2 | Prompt engineering & tutor behavior |
-| Week 3 | Tool-calling AI agents |
-| Week 4 | Full AI tutor application |
-
----
-
-# Week 1 — Foundations
-
-Focus:
-Learning Python fundamentals and integrating AI APIs.
-
-Topics:
-- Variables
-- Loops
-- Functions
-- Debugging
-- File handling
-- AI APIs
-- Prompt engineering
-
----
-
 # Week 2 — Prompt Engineering
 
-Focus:
-Improving AI tutoring quality using prompts.
+## Overview
 
-Topics:
-- Bug explanation
-- Few-shot prompting
-- Socratic questioning
-- Structured outputs
-- Streaming responses
+Week 2 focuses on prompt engineering — the process of designing prompts that guide Large Language Models (LLMs) toward consistent, helpful, and educational responses.
+
+The goal of this week is to explore how different prompting strategies affect the quality of tutoring interactions. Instead of changing the underlying model, various prompt designs are tested to understand how instructions, examples, and response structures influence behavior.
+
+This week serves as the bridge between basic API usage (Week 1) and tool-using AI systems (Week 3).
 
 ---
 
-# Week 3 — Tool Use
+## Learning Objectives
 
-Focus:
-Allowing the AI tutor to safely use tools instead of guessing.
+By the end of Week 2, you should be able to:
 
-Topics:
-- Function calling
-- Tool schemas
-- ReAct loops
-- Safe code execution
-- Linting
-- Documentation search
-- Runtime protection
+* Design effective system prompts
+* Compare different tutoring styles
+* Use Socratic questioning techniques
+* Create structured AI responses
+* Understand chain-of-thought prompting
+* Experiment with few-shot learning
+* Improve consistency through prompt design
 
 ---
 
-# Week 4 — Mini-Tutor v1
+## Topics Covered
 
-Focus:
-Building a complete AI-powered coding tutor application.
+### 1. Friendly Tutor
 
-Features:
-- Streamlit UI
-- Tool-calling AI agent
-- Safe subprocess execution
-- Conversation memory
-- Guided debugging workflow
+A tutoring style focused on:
 
----
+* Encouragement
+* Positive reinforcement
+* Beginner-friendly explanations
+* Reducing student frustration
 
-# Installation
-
-## Clone Repository
-
-```bash
-git clone <your-repo-url>
-cd coding-tutor-agent
-```
-
----
-
-## Create Virtual Environment
-
-```bash
-python3 -m venv tutor-env
-source tutor-env/bin/activate
-```
-
----
-
-## Install Dependencies
-
-```bash
-pip install openai streamlit python-dotenv ruff
-```
-
----
-
-# Environment Variables
-
-Create a `.env` file:
-
-```env
-GROQ_API_KEY=your_api_key_here
-```
-
----
-
-# Run Week 4 Mini-Tutor
-
-## CLI Version
-
-```bash
-python3 week4_mini_tutor.py
-```
-
----
-
-## Streamlit App
-
-```bash
-streamlit run week4_app.py
-```
-
----
-
-# Example Tutor Workflow
-
-## Student Code
-
-```python
-numbers = [1, 2, 3]
-print(numbers[10])
-```
-
-## Runtime Error
+Example behavior:
 
 ```text
-IndexError: list index out of range
+Great attempt!
+
+Let's think about what happens when the loop reaches the last index.
+What value do you think i + 1 has at that point?
 ```
 
-## Tutor Response
+---
+
+### 2. Strict Socratic Tutor
+
+A tutoring style that avoids giving direct answers.
+
+The tutor:
+
+* Diagnoses the issue
+* Asks guiding questions
+* Encourages independent problem-solving
+* Provides hints rather than solutions
+
+Example:
 
 ```text
 Diagnosis:
-You are trying to access a list position that does not exist.
+Your program is accessing an index that may not exist.
 
 Question:
-How many elements are currently inside the list?
+What is the largest valid index in a list of length 5?
 
 Next Step:
-Check the valid index range before accessing the list.
+Try tracing the loop manually for the final iteration.
 ```
 
 ---
 
-# Core AI Tools
+### 3. Chain-of-Thought Prompting
 
-| Tool | Purpose |
-|---|---|
-| `run_python` | Executes Python safely |
-| `lint_code` | Runs Ruff linting |
-| `doc_search` | Explains Python concepts |
+Experiments with encouraging the model to reason step-by-step before producing an answer.
 
----
+Benefits:
 
-# AI Tutor Architecture
+* More accurate explanations
+* Better debugging assistance
+* Improved reasoning transparency
+
+Example:
 
 ```text
-Student
-   ↓
-Streamlit UI
-   ↓
-Tutor Agent
-   ↓
-Tool Loop
-   ↓
-run_python / lint_code / doc_search
-   ↓
-Tool Result
-   ↓
-Tutor Response
+Think through the program execution step-by-step before explaining the error.
 ```
 
 ---
 
-# Key Learning Outcomes
+### 4. Socratic Hint Generation
 
-This project teaches:
-- Python programming
-- Prompt engineering
-- AI agents
-- Tool calling
-- Safe execution systems
-- Runtime analysis
-- Streamlit frontend development
-- Full-stack AI application design
+Focused on producing hints instead of solutions.
 
----
+Goals:
 
-# Future Improvements
+* Promote active learning
+* Encourage debugging skills
+* Prevent answer dumping
 
-- Docker sandboxing
-- Persistent memory
-- Multi-language support
-- Voice tutoring
-- Authentication system
-- Student progress tracking
-- Vector database integration
-- Cloud deployment
+The tutor guides students toward discovering the fix themselves.
 
 ---
 
-# Author
+### 5. Safe Python Runner
 
-Built as part of an AI engineering learning journey focused on:
-- AI tutors
-- Prompt engineering
-- Tool-calling agents
-- Safe execution systems
-- Full-stack AI applications
+One of the most important components introduced during Week 2.
+
+Features:
+
+* AST-based code validation
+* Detection of dangerous operations
+* Temporary file execution
+* Subprocess isolation
+* Execution timeout handling
+* Memory limits (Unix systems)
+* Structured traceback parsing
+* Safe output handling
+
+Execution flow:
+
+```text
+Student Code
+      │
+      ▼
+AST Validation
+      │
+      ▼
+Syntax Check
+      │
+      ▼
+Temporary File
+      │
+      ▼
+Subprocess Execution
+      │
+      ▼
+Output / Traceback
+      │
+      ▼
+AI Tutor Explanation
+```
+
+---
+
+## Key Concepts Explored
+
+### System Prompts
+
+System prompts define the tutor's overall behavior.
+
+Example:
+
+```text
+You are a Socratic Python tutor.
+Never provide the complete solution.
+Guide students using questions.
+```
+
+---
+
+### Structured Outputs
+
+Responses were organized into sections such as:
+
+```text
+Diagnosis:
+...
+
+Question:
+...
+
+Next Step:
+...
+```
+
+Benefits:
+
+* Consistent responses
+* Better readability
+* Easier learning progression
+
+---
+
+### Prompt Consistency
+
+Experiments demonstrated that:
+
+* Clear instructions improve reliability
+* Structured formats reduce randomness
+* Explicit constraints improve educational value
+
+---
+
+## Skills Developed
+
+During Week 2, the following skills were practiced:
+
+* Prompt engineering
+* Educational AI design
+* Socratic tutoring techniques
+* Structured response generation
+* Chain-of-thought reasoning
+* Secure code execution
+* Error analysis and explanation
+
+---
+
+## Project Files
+
+### Tutor Variations
+
+* `friendly_tutor.py`
+* `strict_socratic_mode.py`
+* `chain_of_thought_tutor.py`
+* `socratic_hint_generator.py`
+
+These files experiment with different tutoring approaches and prompt structures.
+
+### Execution Engine
+
+* `safe_python_runner.py`
+
+Provides secure execution, AST validation, subprocess isolation, timeout handling, and traceback analysis.
+
+---
+
+## Key Takeaways
+
+* Prompt design significantly influences model behavior.
+* Structured outputs improve consistency and readability.
+* Socratic tutoring promotes deeper learning than direct answers.
+* Secure code execution is essential when running student code.
+* AST-based validation is more reliable than string-based blacklists.
+* Educational effectiveness depends as much on prompt design as on model capability.
+
+---
+
+## Connection to Future Weeks
+
+### Week 3 — Tool Use
+
+Week 3 expands beyond prompting by allowing the tutor to:
+
+* Execute student code
+* Run analysis tools
+* Inspect outputs programmatically
+* Make decisions based on tool results
+
+### Week 4 — Mini Tutor
+
+Week 4 combines:
+
+* Prompt engineering
+* Tool use
+* Safe code execution
+* AI tutoring workflows
+
+into a complete interactive coding tutor.
+
+---
+
+## Outcome
+
+At the end of Week 2, multiple tutoring strategies were explored and evaluated, while a secure execution framework was developed for running student code safely. These experiments established the educational and technical foundations for the tool-using coding tutor built in later weeks.
