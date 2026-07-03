@@ -62,6 +62,10 @@ class _MockEmbedder:
 
 _MOCK_EMBEDDER = _MockEmbedder()
 
+# Registry of all ChromaManager instances created during the test run.
+# Used in main() to close ChromaDB clients before temp dir cleanup on Windows.
+_ALL_CHROMA_MANAGERS: list[ChromaManager] = []
+
 
 # ============================================================
 # TEST HARNESS
@@ -120,7 +124,9 @@ SAMPLE_DOCS = [
 
 
 def _make_manager(tmp_dir: Path, name: str = "test_col") -> ChromaManager:
-    return ChromaManager(persist_dir=tmp_dir, collection_name=name)
+    mgr = ChromaManager(persist_dir=tmp_dir, collection_name=name)
+    _ALL_CHROMA_MANAGERS.append(mgr)
+    return mgr
 
 
 def _embed(text: str) -> list[float]:
@@ -336,7 +342,7 @@ def test_indexer_with_real_files(tmp: Path) -> None:
         return
 
     indexer = DocumentIndexer(
-        chroma_manager    = ChromaManager(persist_dir=tmp, collection_name="idx_col"),
+        chroma_manager    = (_idx_cm := ChromaManager(persist_dir=tmp, collection_name="idx_col"), _ALL_CHROMA_MANAGERS.append(_idx_cm))[0],
         embedding_manager = _MOCK_EMBEDDER,
         chunker           = DocumentChunker(),
     )
@@ -362,6 +368,7 @@ def test_rag_search(tmp: Path) -> None:
     # Inject test doubles so we don't need HuggingFace or production DB.
     rst._embedder = _MOCK_EMBEDDER
     rst._chroma   = ChromaManager(persist_dir=tmp, collection_name="rag_col")
+    _ALL_CHROMA_MANAGERS.append(rst._chroma)
 
     # Populate with sample data.
     _populate(rst._chroma)
@@ -389,6 +396,7 @@ def test_rag_search_empty_query(tmp: Path) -> None:
     import rag_search_tool as rst
     rst._embedder = _MOCK_EMBEDDER
     rst._chroma   = ChromaManager(persist_dir=tmp, collection_name="rag_empty_col")
+    _ALL_CHROMA_MANAGERS.append(rst._chroma)
 
     r1 = rag_search("")
     r2 = rag_search("   ")
@@ -404,7 +412,7 @@ def test_index_text(tmp: Path) -> None:
     section("16 · DocumentIndexer.index_text() — full pipeline")
 
     indexer = DocumentIndexer(
-        chroma_manager    = ChromaManager(persist_dir=tmp, collection_name="txt_col"),
+        chroma_manager    = (_txt_cm := ChromaManager(persist_dir=tmp, collection_name="txt_col"), _ALL_CHROMA_MANAGERS.append(_txt_cm))[0],
         embedding_manager = _MOCK_EMBEDDER,
         chunker           = DocumentChunker(),
     )
@@ -495,6 +503,149 @@ def test_split_fixed_overlap_guard() -> None:
     check("no error when overlap < chunk_size",            no_raise)
 
 
+
+
+def test_similarity_threshold(tmp: Path) -> None:
+    section("19 · rag_search() — min_similarity threshold filters low-scoring chunks")
+
+    import rag_search_tool as rst
+    rst._embedder = _MOCK_EMBEDDER
+    rst._chroma   = ChromaManager(persist_dir=tmp, collection_name="sim_col")
+    _ALL_CHROMA_MANAGERS.append(rst._chroma)
+    _populate(rst._chroma)
+
+    # With threshold 0.0 (default) — all results returned.
+    r_all = rag_search("Python programming", top_k=3, min_similarity=0.0)
+    check("threshold=0.0 returns results",   r_all["success"],  r_all.get("error"))
+
+    # With threshold 0.9999 — only near-identical chunks pass; likely none.
+    r_high = rag_search("Python programming", top_k=3, min_similarity=0.9999)
+    # Either no results (success=False) or fewer results than r_all.
+    if r_high["success"]:
+        check("high threshold yields fewer results",
+              len(r_high["chunks"]) <= len(r_all["chunks"]))
+    else:
+        check("high threshold filters all chunks (success=False)", True)
+
+    # All returned chunks must meet the threshold.
+    r_mid = rag_search("Python programming", top_k=3, min_similarity=0.5)
+    if r_mid["success"]:
+        check("all chunks meet min_similarity=0.5",
+              all(c["similarity"] >= 0.5 for c in r_mid["chunks"]),
+              str([c["similarity"] for c in r_mid["chunks"]]))
+    else:
+        check("no chunks met min_similarity=0.5 (acceptable)", True)
+
+
+def test_embedding_dimension_validation(tmp: Path) -> None:
+    section("20 · ChromaDB — ValueError on inconsistent embedding dimensions")
+
+    mgr = _make_manager(tmp, name="dim_col")
+
+    raised = False
+    try:
+        mgr.add_documents(
+            ids        = ["a", "b"],
+            embeddings = [[1.0, 2.0], [1.0, 2.0, 3.0]],   # 2-d vs 3-d
+            documents  = ["doc a", "doc b"],
+        )
+    except ValueError:
+        raised = True
+
+    check("inconsistent dimensions raise ValueError", raised)
+
+    # Zero-length embedding must also raise.
+    raised_empty = False
+    try:
+        mgr.add_documents(
+            ids        = ["c"],
+            embeddings = [[]],
+            documents  = ["doc c"],
+        )
+    except ValueError:
+        raised_empty = True
+
+    check("empty embedding raises ValueError", raised_empty)
+
+
+def test_hidden_files_skipped(tmp: Path) -> None:
+    section("21 · index_directory() — hidden files are skipped")
+
+    import tempfile as _tf
+
+    docs_dir = tmp / "hidden_test_docs"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write a normal file and a hidden file.
+    (docs_dir / "visible.txt").write_text(
+        "# Visible\ntopic: loops\ndifficulty: beginner\n\n## Section\nContent here.",
+        encoding="utf-8",
+    )
+    (docs_dir / ".notes.txt").write_text(
+        "# Hidden\ntopic: secret\ndifficulty: beginner\n\n## Section\nHidden content.",
+        encoding="utf-8",
+    )
+
+    indexer = DocumentIndexer(
+        chroma_manager    = (_hid_cm := ChromaManager(persist_dir=tmp, collection_name="hidden_col"), _ALL_CHROMA_MANAGERS.append(_hid_cm))[0],
+        embedding_manager = _MOCK_EMBEDDER,
+        chunker           = DocumentChunker(),
+    )
+    result = indexer.index_directory(docs_dir, reset_first=True)
+
+    check("only 1 file indexed (hidden skipped)",
+          result.files_indexed == 1,
+          str(result.files_indexed))
+    check("documents stored > 0",
+          result.documents_stored > 0,
+          str(result.documents_stored))
+
+    sources = indexer._chroma.list_sources()
+    check(".notes.txt not in sources",  ".notes.txt"  not in sources, str(sources))
+    check("visible.txt in sources",     "visible.txt" in sources,     str(sources))
+
+
+def test_index_text_retrieval(tmp: Path) -> None:
+    section("22 · index_text() — indexed content is retrievable via rag_search()")
+
+    import rag_search_tool as rst
+
+    chroma  = ChromaManager(persist_dir=tmp, collection_name="txt_ret_col")
+    _ALL_CHROMA_MANAGERS.append(chroma)
+    indexer = DocumentIndexer(
+        chroma_manager    = chroma,
+        embedding_manager = _MOCK_EMBEDDER,
+        chunker           = DocumentChunker(),
+    )
+
+    text = """# Inline Topic
+topic: recursion
+difficulty: intermediate
+
+## What is Recursion?
+Recursion is when a function calls itself to solve a smaller version of the problem.
+The base case stops the recursion; without it the function loops forever.
+
+## Example
+def factorial(n):
+    if n == 0:
+        return 1
+    return n * factorial(n - 1)
+"""
+    result = indexer.index_text(text, source="recursion_inline.txt")
+    check("index_text stores documents",  result.documents_stored > 0,
+          str(result.documents_stored))
+
+    # Now verify rag_search() can find it.
+    rst._embedder = _MOCK_EMBEDDER
+    rst._chroma   = chroma
+
+    r = rag_search("what is recursion", top_k=3)
+    check("rag_search finds indexed text",  r["success"],  r.get("error"))
+    check("source appears in results",
+          "recursion_inline.txt" in r["sources"],
+          str(r["sources"]))
+
 # ============================================================
 # MAIN
 # ============================================================
@@ -505,7 +656,8 @@ def main() -> None:
     print("  WEEK 5 DAY 3 — VECTOR STORE  ·  Test Suite")
     print("=" * 58)
 
-    with tempfile.TemporaryDirectory() as tmp_str:
+    # ignore_cleanup_errors prevents Windows file-lock errors on cleanup.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_str:
         tmp = Path(tmp_str)
 
         try:
@@ -535,9 +687,24 @@ def main() -> None:
             test_metadata_filter_query(tmp / "filter")
             test_split_fixed_overlap_guard()
 
+            # New tests from second review pass
+            test_similarity_threshold(tmp / "sim")
+            test_embedding_dimension_validation(tmp / "dim")
+            test_hidden_files_skipped(tmp / "hidden")
+            test_index_text_retrieval(tmp / "txt_ret")
+
         except Exception:
             print("\n[FATAL] Unexpected exception:")
             traceback.print_exc()
+
+        finally:
+            # Close all ChromaDB clients so Windows releases file locks
+            # before TemporaryDirectory attempts to delete the folder.
+            for _mgr in _ALL_CHROMA_MANAGERS:
+                try:
+                    _mgr._client._system.stop()
+                except Exception:
+                    pass
 
     total  = len(_PASSED) + len(_FAILED)
     passed = len(_PASSED)

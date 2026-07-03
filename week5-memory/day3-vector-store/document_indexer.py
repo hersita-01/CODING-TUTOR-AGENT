@@ -140,7 +140,10 @@ class DocumentIndexer:
             log.error("index_directory: '%s' is not a directory.", docs_dir)
             return IndexResult(0, 0, 0, 0, 0, [f"Not a directory: {docs_dir}"])
 
-        txt_files = sorted(docs_dir.glob("*.txt"))
+        # Exclude hidden files (names starting with '.') such as .notes.txt.
+        txt_files = sorted(
+            p for p in docs_dir.glob("*.txt") if not p.name.startswith(".")
+        )
         if not txt_files:
             log.warning("index_directory: no .txt files found in '%s'.", docs_dir)
             return IndexResult(0, 0, 0, 0, 0, [f"No .txt files in {docs_dir}"])

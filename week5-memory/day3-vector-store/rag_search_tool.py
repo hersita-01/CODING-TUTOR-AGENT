@@ -107,6 +107,9 @@ def rag_search(
     if not query or not query.strip():
         return _failure_result(query or "", "Query must be a non-empty string.")
 
+    if top_k <= 0:
+        return _failure_result(query, "top_k must be greater than 0.")
+
     embedder = _get_embedder()
     chroma   = _get_chroma()
 
@@ -154,6 +157,13 @@ def rag_search(
             "chunk_id":   meta.get("chunk_id", "")   if meta else "",
             "similarity": similarity,
         })
+
+    # All chunks may have been filtered by min_similarity.
+    if not chunks:
+        return _failure_result(
+            query,
+            f"No results met the minimum similarity threshold ({min_similarity})."
+        )
 
     summary = _build_summary(query, chunks)
     log.info(
@@ -203,7 +213,7 @@ def _build_metadata_filter(
         return None
     if len(filters) == 1:
         return filters[0]
-    return {"": filters}
+    return {"$and": filters}
 
 
 def _build_summary(query: str, chunks: list[dict[str, Any]]) -> str:

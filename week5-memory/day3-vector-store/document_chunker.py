@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import logging
 import re
-import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -103,6 +102,17 @@ class DocumentChunker:
         chunk_size: int            = DEFAULT_CHUNK_SIZE,
         overlap:    int            = DEFAULT_OVERLAP,
     ) -> None:
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be greater than 0.")
+
+        if overlap < 0:
+            raise ValueError("overlap cannot be negative.")
+
+        if overlap >= chunk_size:
+            raise ValueError(
+                "overlap must be smaller than chunk_size."
+            )
+        
         self._strategy   = strategy
         self._chunk_size = chunk_size
         self._overlap    = overlap

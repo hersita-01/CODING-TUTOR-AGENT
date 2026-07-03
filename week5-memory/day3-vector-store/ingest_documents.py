@@ -70,7 +70,9 @@ def main() -> None:
         print(f"  ERROR: '{docs_dir}' is not a directory.")
         sys.exit(1)
 
-    txt_files = sorted(docs_dir.glob("*.txt"))
+    txt_files = sorted(
+        p for p in docs_dir.glob("*.txt") if not p.name.startswith(".")
+    )
     if not txt_files:
         print(f"  ERROR: No .txt files found in '{docs_dir}'.")
         sys.exit(1)
