@@ -44,7 +44,8 @@ log = logging.getLogger("week5.embedding_manager")
 # CONSTANTS
 # ============================================================
 
-DEFAULT_MODEL = "all-MiniLM-L6-v2"
+DEFAULT_MODEL       = "all-MiniLM-L6-v2"
+DEFAULT_BATCH_SIZE  = 64
 # 384-dimensional embeddings; fast, accurate for semantic similarity.
 # Chosen because it is small enough to run on CPU without a GPU.
 
@@ -64,6 +65,9 @@ class EmbeddingManager:
     ----------
     model_name:
         HuggingFace model identifier.  Defaults to ``all-MiniLM-L6-v2``.
+    batch_size:
+        Number of texts to encode per model forward pass.
+        Defaults to ``DEFAULT_BATCH_SIZE`` (64).
 
     Example
     -------
@@ -76,11 +80,19 @@ class EmbeddingManager:
     3
     """
 
-    def __init__(self, model_name: str = DEFAULT_MODEL) -> None:
+    def __init__(
+        self,
+        model_name: str = DEFAULT_MODEL,
+        batch_size: int = DEFAULT_BATCH_SIZE,
+    ) -> None:
         self._model_name: str = model_name
+        if batch_size <= 0:
+            raise ValueError("batch_size must be greater than 0.")
+        self._batch_size: int = batch_size
         self._model = None          # lazy-loaded on first embed call
         self._dim:   Optional[int] = None
-        log.debug("EmbeddingManager created (model=%s, not yet loaded).", model_name)
+        log.debug("EmbeddingManager created (model=%s, batch_size=%d, not yet loaded).",
+                  model_name, batch_size)
 
     # ------------------------------------------------------------------
     # Model loading
@@ -96,7 +108,7 @@ class EmbeddingManager:
             log.info("Loading embedding model '%s' …", self._model_name)
             self._model = SentenceTransformer(self._model_name)
             # Cache the dimension from a probe embedding.
-            probe = self._model.encode("probe", convert_to_numpy=True)
+            probe = self._model.encode("probe", convert_to_numpy=True, normalize_embeddings=True)
             self._dim = int(probe.shape[0])
             log.info(
                 "Embedding model loaded. Dimension: %d.", self._dim
@@ -140,6 +152,7 @@ class EmbeddingManager:
             vector: np.ndarray = self._model.encode(
                 text.strip(),
                 convert_to_numpy=True,
+                normalize_embeddings=True,
                 show_progress_bar=False,
             )
             return vector.tolist()
@@ -194,8 +207,9 @@ class EmbeddingManager:
             vectors: np.ndarray = self._model.encode(
                 valid_texts,
                 convert_to_numpy=True,
+                normalize_embeddings=True,
                 show_progress_bar=False,
-                batch_size=64,
+                batch_size=self._batch_size,
             )
             for out_idx, vec in zip(valid_indices, vectors):
                 results[out_idx] = vec.tolist()
@@ -226,3 +240,7 @@ class EmbeddingManager:
     def is_loaded(self) -> bool:
         """Return True if the model has been loaded into memory."""
         return self._model is not None
+
+    def batch_size(self) -> int:
+        """Return the configured embedding batch size."""
+        return self._batch_size
