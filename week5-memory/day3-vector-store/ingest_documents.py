@@ -53,10 +53,18 @@ def main() -> None:
         action  = "store_true",
         help    = "Clear the ChromaDB collection before indexing.",
     )
+    parser.add_argument(
+        "--strategy",
+        type    = str,
+        default = "section",
+        choices = ["section", "sentence", "fixed", "auto"],
+        help    = "Chunking strategy (default: section).",
+    )
     args = parser.parse_args()
 
     docs_dir: Path = args.docs_dir
     reset:    bool = args.reset
+    strategy: str  = args.strategy
 
     print()
     print("=" * 52)
@@ -64,6 +72,7 @@ def main() -> None:
     print("=" * 52)
     print(f"  Docs directory : {docs_dir}")
     print(f"  Reset first    : {reset}")
+    print(f"  Strategy       : {strategy}")
     print()
 
     if not docs_dir.is_dir():
@@ -88,7 +97,7 @@ def main() -> None:
     indexer  = DocumentIndexer(
         chroma_manager    = ChromaManager(),
         embedding_manager = EmbeddingManager(),
-        chunker           = DocumentChunker(),
+        chunker           = DocumentChunker(strategy=strategy),
     )
     print(f"  Model ready ({time.time() - t0:.1f}s)")
     print()

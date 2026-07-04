@@ -76,6 +76,18 @@ class ChromaManager:
     def persist_dir(self) -> Path:
         return self._persist_dir
 
+    def __len__(self) -> int:
+        """Return the number of documents in the collection."""
+        return self.document_count()
+
+    def __repr__(self) -> str:
+        """Return a developer-friendly string representation."""
+        return (
+            f"ChromaManager("
+            f"collection='{self.collection_name}', "
+            f"documents={self.document_count()})"
+        )
+
     # ------------------------------------------------------------------
     # Write operations
     # ------------------------------------------------------------------
@@ -116,6 +128,18 @@ class ChromaManager:
         if metadatas is None:
             metadatas = [{} for _ in ids]
 
+        if len(metadatas) != len(ids):
+            raise ValueError(
+                f"metadatas ({len(metadatas)}) must match ids ({len(ids)})."
+            )
+
+        # Validate IDs: must be non-empty strings.
+        for doc_id in ids:
+            if not isinstance(doc_id, str) or not doc_id.strip():
+                raise ValueError(
+                    "Document IDs must be non-empty strings."
+                )
+
         if len(ids) != len(set(ids)):
             raise ValueError("Duplicate document IDs detected.")
 
@@ -129,6 +153,20 @@ class ChromaManager:
                 f"add_documents: inconsistent embedding dimensions {dims}. "
                 "All embeddings must have the same dimension."
             )
+
+        # Validate document strings: must be non-empty.
+        for doc in documents:
+            if not isinstance(doc, str) or not doc.strip():
+                raise ValueError(
+                    "add_documents: documents must contain non-empty strings."
+                )
+
+        # Validate metadata entries: must all be dicts.
+        for m in metadatas:
+            if not isinstance(m, dict):
+                raise TypeError(
+                    "Each metadata entry must be a dictionary."
+                )
 
         clean_meta = [_sanitise_metadata(m) for m in metadatas]
 
@@ -148,13 +186,29 @@ class ChromaManager:
     def is_empty(self) -> bool:
         """Return True if the collection has no documents."""
         return self.document_count() == 0
+
+    def exists(self, doc_id: str) -> bool:
+        """Return True if a document with this ID exists in the collection.
+
+        Parameters
+        ----------
+        doc_id:
+            The document ID to check.
+        """
+        return self.get_document(doc_id) is not None
     
     def collection_info(self) -> dict[str, Any]:
         """Return basic information about the collection."""
+        log.debug(
+            "Collection '%s': %d documents.",
+            self.collection_name,
+            self.document_count(),
+        )
         return {
-            "collection": self.collection_name,
-            "persist_dir": str(self.persist_dir),
-            "documents": self.document_count(),
+            "collection_name":  self.collection_name,
+            "persist_dir":      str(self.persist_dir),
+            "document_count":   self.document_count(),
+            "is_empty":         self.is_empty(),
         }
     
     def delete_document(self, doc_id: str) -> bool:
@@ -208,6 +262,9 @@ class ChromaManager:
             log.warning("query called with empty embedding.")
             return _empty_result()
 
+        if not all(isinstance(x, (int, float)) for x in query_embedding):
+            raise TypeError("query_embedding must contain only numeric values.")
+
         count = self._collection.count()
         if count == 0:
             log.warning("Collection '%s' is empty.", self._collection_name)
@@ -231,7 +288,7 @@ class ChromaManager:
                 "distances": raw["distances"][0] if raw["distances"] else [],
             }
         except Exception as exc:
-            log.exception("query failed")
+            log.exception("query failed: %s", exc)
             return _empty_result()
 
     def document_count(self) -> int:

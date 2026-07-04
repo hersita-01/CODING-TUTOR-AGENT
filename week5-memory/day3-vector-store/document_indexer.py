@@ -90,6 +90,7 @@ class DocumentIndexer:
         EmbeddingManager instance (Day 2) for producing vectors.
     chunker:
         DocumentChunker instance. Defaults to section-based chunking.
+        Supports strategies: "section", "sentence", "fixed", "auto".
     batch_size:
         Number of chunks to embed and store per ChromaDB upsert call.
 
@@ -107,9 +108,9 @@ class DocumentIndexer:
         chunker:           Optional[DocumentChunker]  = None,
         batch_size:        int                        = 32,
     ) -> None:
-        self._chroma    = chroma_manager    or ChromaManager()
-        self._embedder  = embedding_manager or EmbeddingManager()
-        self._chunker   = chunker           or DocumentChunker()
+        self._chroma    = chroma_manager    if chroma_manager    is not None else ChromaManager()
+        self._embedder  = embedding_manager if embedding_manager is not None else EmbeddingManager()
+        self._chunker   = chunker           if chunker           is not None else DocumentChunker()
         self._batch_size = batch_size
 
     # ------------------------------------------------------------------

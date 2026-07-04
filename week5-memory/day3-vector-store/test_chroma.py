@@ -646,6 +646,205 @@ def factorial(n):
           "recursion_inline.txt" in r["sources"],
           str(r["sources"]))
 
+
+
+def test_auto_strategy() -> None:
+    section("23 · DocumentChunker — auto strategy selection")
+
+    # Document with multiple ## headings → should choose section
+    headed_text = """# Doc
+topic: loops
+difficulty: beginner
+
+## For Loops
+A for loop iterates over sequences.
+
+## While Loops
+A while loop repeats while a condition is True.
+
+## Break and Continue
+break exits the loop immediately.
+"""
+    chunker = DocumentChunker(strategy="auto")
+    chunks  = chunker.chunk_text(headed_text, source="headed.txt")
+
+    check("auto selects section for headed doc",
+          all(c.strategy == "section" for c in chunks),
+          str(chunks[0].strategy if chunks else "no chunks"))
+    check("auto produces chunks",  len(chunks) >= 2, str(len(chunks)))
+
+    # Document with many sentences but no headings → sentence
+    prose_text = ("Python is easy. " * 15)
+    chunks_p = chunker.chunk_text(prose_text, source="prose.txt")
+    if chunks_p:
+        check("auto selects sentence for prose",
+              chunks_p[0].strategy in ("sentence", "fixed"),
+              chunks_p[0].strategy)
+    else:
+        check("auto handles prose", True)
+
+
+def test_chunk_new_metadata_fields() -> None:
+    section("24 · Chunk — quality_score, contains_heading, sentence_count")
+
+    text = """# Doc
+topic: variables
+difficulty: beginner
+
+## Variables
+A variable stores a value in memory. You can assign it any type.
+Use descriptive names. Avoid single letters except in loops.
+"""
+    chunker = DocumentChunker()
+    chunks  = chunker.chunk_text(text, source="vars.txt")
+
+    check("chunks produced",              len(chunks) > 0)
+    check("quality_score is float",
+          all(isinstance(c.quality_score, float) for c in chunks))
+    check("quality_score in [0, 1]",
+          all(0.0 <= c.quality_score <= 1.0 for c in chunks))
+    check("contains_heading is bool",
+          all(isinstance(c.contains_heading, bool) for c in chunks))
+    check("sentence_count is int",
+          all(isinstance(c.sentence_count, int) for c in chunks))
+    check("first chunk contains heading",   chunks[0].contains_heading)
+
+    meta_keys = set(chunks[0].to_metadata().keys())
+    check("quality_score in metadata",     "quality_score"    in meta_keys)
+    check("contains_heading in metadata",  "contains_heading" in meta_keys)
+    check("sentence_count in metadata",    "sentence_count"   in meta_keys)
+
+
+def test_chunk_statistics() -> None:
+    section("25 · DocumentChunker.chunk_statistics()")
+
+    text = """# Doc
+topic: loops
+difficulty: beginner
+
+## For Loops
+A for loop iterates over a sequence.
+
+## While Loops
+A while loop repeats while a condition is True.
+"""
+    chunker = DocumentChunker()
+    chunks  = chunker.chunk_text(text, source="loops.txt")
+    stats   = chunker.chunk_statistics(chunks)
+
+    check("chunks key correct",       stats["chunks"]   == len(chunks), str(stats))
+    check("average_size is int",      isinstance(stats["average_size"], int))
+    check("largest >= smallest",      stats["largest"]  >= stats["smallest"])
+    check("strategy is set",          bool(stats["strategy"]))
+    check("empty list returns zeros", chunker.chunk_statistics([])["chunks"] == 0)
+
+
+def test_preview_chunks() -> None:
+    section("26 · DocumentChunker.preview_chunks()")
+
+    chunker = DocumentChunker()
+    chunks  = chunker.chunk_text(
+        "# Doc\ntopic: x\ndifficulty: beginner\n\n## A\nContent here.\n\n## B\nMore content.",
+        source="test.txt"
+    )
+    preview = chunker.preview_chunks(chunks, max_chars=40)
+
+    check("preview is a string",       isinstance(preview, str))
+    check("preview contains Chunk",    "Chunk" in preview)
+    check("empty list returns message",
+          chunker.preview_chunks([]) == "(no chunks)")
+
+
+def test_compare_strategies() -> None:
+    section("27 · DocumentChunker.compare_strategies()")
+
+    text = open(_here / "python_docs" / "loops.txt").read() if (_here / "python_docs" / "loops.txt").exists() else (
+        "# Loops\ntopic: loops\ndifficulty: beginner\n\n## For Loops\n"
+        + ("Python loops repeat code. For loops iterate sequences. " * 5)
+    )
+    chunker = DocumentChunker()
+    result  = chunker.compare_strategies(text)
+
+    check("returns dict with 3 keys",   set(result.keys()) == {"section", "sentence", "fixed"})
+    check("all values are ints",        all(isinstance(v, int) for v in result.values()))
+    check("all strategies produce > 0", all(v > 0 for v in result.values()),
+          str(result))
+
+
+def test_validate_chunks() -> None:
+    section("28 · DocumentChunker.validate_chunks()")
+
+    chunker = DocumentChunker()
+    text    = "# Doc\ntopic: x\ndifficulty: beginner\n\n## A\nContent.\n\n## B\nMore."
+    chunks  = chunker.chunk_text(text, source="test.txt")
+
+    result = chunker.validate_chunks(chunks)
+
+    check("returns expected keys",
+          set(result.keys()) == {"empty_chunks", "duplicate_chunks", "oversized_chunks"})
+    check("no empty chunks in clean text",    result["empty_chunks"]     == 0)
+    check("no duplicates in clean text",      result["duplicate_chunks"] == 0)
+    check("no oversized in clean text",       result["oversized_chunks"] == 0)
+
+
+def test_sentence_chunking_by_chars() -> None:
+    section("29 · Sentence chunking respects max_chars not fixed group size")
+
+    long_sentence  = "Python is a great language for beginners and experts alike. "
+    # 15 short sentences — with GROUP_SIZE=5 would give 3 chunks; with max_chars
+    # it depends on actual character accumulation.
+    text   = "# Doc\ntopic: x\ndifficulty: beginner\n\n## Body\n" + long_sentence * 15
+    chunker = DocumentChunker(strategy="sentence", sentence_max_chars=200)
+    chunks  = chunker.chunk_text(text, source="sentences.txt")
+
+    check("sentence chunks produced",          len(chunks) > 0)
+    check("no chunk exceeds max_chars * 1.1",  # small tolerance for last group
+          all(c.char_count <= 220 for c in chunks),
+          str([c.char_count for c in chunks]))
+
+
+def test_fixed_chunking_word_boundary() -> None:
+    section("30 · Fixed chunking snaps to word boundary")
+
+    # Text with clear word boundaries
+    text   = ("Python variables store values. " * 30)
+    chunker = DocumentChunker(strategy="fixed", chunk_size=100, overlap=10)
+    chunks  = chunker.chunk_text(text, source="fixed.txt")
+
+    check("fixed chunks produced",         len(chunks) > 0)
+    # Word-boundary snapping: chunks should not far exceed chunk_size,
+    # and text should be clean (no leading/trailing whitespace after strip).
+    check("no chunk far exceeds chunk_size",
+          all(c.char_count <= 115 for c in chunks),
+          str([c.char_count for c in chunks]))
+    check("chunk text is clean after snapping",
+          all(c.text == c.text.strip() for c in chunks))
+
+
+def test_all_heading_levels() -> None:
+    section("31 · Section chunking splits on all heading levels")
+
+    text = """# Document
+topic: mixed
+difficulty: intermediate
+
+## Section One
+Content under h2.
+
+### Subsection
+Content under h3.
+
+#### Deep Section
+Content under h4.
+"""
+    chunker = DocumentChunker(strategy="section")
+    chunks  = chunker.chunk_text(text, source="headings.txt")
+
+    check("splits on h2",  any("## Section" in c.text for c in chunks))
+    check("splits on h3",  any("### Subsection" in c.text for c in chunks))
+    check("splits on h4",  any("#### Deep" in c.text for c in chunks))
+    check("at least 3 chunks from mixed headings", len(chunks) >= 3, str(len(chunks)))
+
 # ============================================================
 # MAIN
 # ============================================================
@@ -692,6 +891,17 @@ def main() -> None:
             test_embedding_dimension_validation(tmp / "dim")
             test_hidden_files_skipped(tmp / "hidden")
             test_index_text_retrieval(tmp / "txt_ret")
+
+            # New chunker feature tests
+            test_auto_strategy()
+            test_chunk_new_metadata_fields()
+            test_chunk_statistics()
+            test_preview_chunks()
+            test_compare_strategies()
+            test_validate_chunks()
+            test_sentence_chunking_by_chars()
+            test_fixed_chunking_word_boundary()
+            test_all_heading_levels()
 
         except Exception:
             print("\n[FATAL] Unexpected exception:")

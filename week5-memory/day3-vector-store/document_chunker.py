@@ -5,13 +5,15 @@
 # DocumentChunker splits tutorial text into chunks suitable for
 # embedding and storage in ChromaDB.
 #
-# Three chunking strategies:
-#   section  (default) - split on ## headings
-#   sentence           - split on sentence boundaries
-#   fixed              - split on character count
+# Four chunking strategies:
+#   section  (default) - split on any heading level (#, ##, ###, ####)
+#   sentence           - group sentences up to max_chars (default 500)
+#   fixed              - character count with word-boundary snapping
+#   auto               - automatically selects the best strategy
 #
 # Each chunk carries metadata:
-#   source, topic, difficulty, chunk_id, strategy, char_count
+#   source, topic, difficulty, chunk_id, strategy, char_count,
+#   quality_score, contains_heading, sentence_count
 # -----------------------------------
 
 from __future__ import annotations
@@ -24,11 +26,12 @@ from typing import Literal
 
 log = logging.getLogger("week5.document_chunker")
 
-ChunkStrategy = Literal["section", "sentence", "fixed"]
+ChunkStrategy = Literal["section", "sentence", "fixed", "auto"]
 
-DEFAULT_STRATEGY   : ChunkStrategy = "section"
-DEFAULT_CHUNK_SIZE : int           = 512    # chars for fixed strategy
-DEFAULT_OVERLAP    : int           = 64     # char overlap for fixed strategy
+DEFAULT_STRATEGY         : ChunkStrategy = "section"
+DEFAULT_CHUNK_SIZE       : int           = 512    # chars for fixed strategy
+DEFAULT_OVERLAP          : int           = 64     # char overlap for fixed strategy
+DEFAULT_SENTENCE_MAX_CHARS: int          = 500    # max chars per sentence group
 
 
 # ============================================================
@@ -41,34 +44,46 @@ class Chunk:
 
     Attributes
     ----------
-    text:       The chunk content.
-    chunk_id:   Unique identifier (used as ChromaDB document ID).
-    source:     Filename the chunk came from (e.g. "loops.txt").
-    topic:      Python topic label extracted from the document header.
-    difficulty: Difficulty label extracted from the document header.
-    strategy:   Chunking strategy used to produce this chunk.
-    char_count: Number of characters in ``text``.
+    text:             The chunk content.
+    chunk_id:         Unique identifier (used as ChromaDB document ID).
+    source:           Filename the chunk came from (e.g. "loops.txt").
+    topic:            Python topic label extracted from the document header.
+    difficulty:       Difficulty label extracted from the document header.
+    strategy:         Chunking strategy used to produce this chunk.
+    char_count:       Number of characters in ``text``.
+    quality_score:    Float 0–1 rating based on length, headings, sentences.
+    contains_heading: True if the chunk starts with a Markdown heading.
+    sentence_count:   Approximate number of sentences in the chunk.
     """
-    text:       str
-    chunk_id:   str
-    source:     str                    = ""
-    topic:      str                    = ""
-    difficulty: str                    = "beginner"
-    strategy:   ChunkStrategy         = "section"
-    char_count: int                    = field(init=False)
+    text:             str
+    chunk_id:         str
+    source:           str           = ""
+    topic:            str           = ""
+    difficulty:       str           = "beginner"
+    strategy:         ChunkStrategy = "section"
+    char_count:       int           = field(init=False)
+    quality_score:    float         = field(init=False)
+    contains_heading: bool          = field(init=False)
+    sentence_count:   int           = field(init=False)
 
     def __post_init__(self) -> None:
-        self.char_count = len(self.text)
+        self.char_count       = len(self.text)
+        self.contains_heading = bool(re.match(r"^#{1,6}\s", self.text))
+        self.sentence_count   = len(re.findall(r"[.!?][\s\n]", self.text)) + 1
+        self.quality_score    = _score_chunk(self.text)
 
-    def to_metadata(self) -> dict[str, str]:
+    def to_metadata(self) -> dict:
         """Return a flat dict suitable for ChromaDB metadata."""
         return {
-            "source":     self.source,
-            "topic":      self.topic,
-            "difficulty": self.difficulty,
-            "chunk_id":   self.chunk_id,
-            "strategy":   self.strategy,
-            "char_count": self.char_count,
+            "source":           self.source,
+            "topic":            self.topic,
+            "difficulty":       self.difficulty,
+            "chunk_id":         self.chunk_id,
+            "strategy":         self.strategy,
+            "char_count":       self.char_count,
+            "quality_score":    round(self.quality_score, 4),
+            "contains_heading": self.contains_heading,
+            "sentence_count":   self.sentence_count,
         }
 
 
@@ -82,11 +97,14 @@ class DocumentChunker:
     Parameters
     ----------
     strategy:
-        Default chunking strategy.  Can be overridden per call.
+        Default chunking strategy. ``"auto"`` selects the best strategy
+        per document. Can be overridden per call.
     chunk_size:
         Character limit for fixed-size chunking.
     overlap:
         Character overlap between consecutive fixed-size chunks.
+    sentence_max_chars:
+        Maximum characters per sentence group (sentence strategy).
 
     Example
     -------
@@ -98,24 +116,24 @@ class DocumentChunker:
 
     def __init__(
         self,
-        strategy:   ChunkStrategy = DEFAULT_STRATEGY,
-        chunk_size: int            = DEFAULT_CHUNK_SIZE,
-        overlap:    int            = DEFAULT_OVERLAP,
+        strategy:           ChunkStrategy = DEFAULT_STRATEGY,
+        chunk_size:         int            = DEFAULT_CHUNK_SIZE,
+        overlap:            int            = DEFAULT_OVERLAP,
+        sentence_max_chars: int            = DEFAULT_SENTENCE_MAX_CHARS,
     ) -> None:
         if chunk_size <= 0:
             raise ValueError("chunk_size must be greater than 0.")
-
         if overlap < 0:
             raise ValueError("overlap cannot be negative.")
-
         if overlap >= chunk_size:
-            raise ValueError(
-                "overlap must be smaller than chunk_size."
-            )
-        
-        self._strategy   = strategy
-        self._chunk_size = chunk_size
-        self._overlap    = overlap
+            raise ValueError("overlap must be smaller than chunk_size.")
+        if sentence_max_chars <= 0:
+            raise ValueError("sentence_max_chars must be greater than 0.")
+
+        self._strategy            = strategy
+        self._chunk_size          = chunk_size
+        self._overlap             = overlap
+        self._sentence_max_chars  = sentence_max_chars
 
     # ------------------------------------------------------------------
     # Public API
@@ -134,6 +152,7 @@ class DocumentChunker:
         text:     The full document text.
         source:   Filename label stored in metadata.
         strategy: Override the instance default strategy.
+                  Pass ``"auto"`` to let the chunker decide.
 
         Returns
         -------
@@ -146,10 +165,15 @@ class DocumentChunker:
         strat = strategy or self._strategy
         topic, difficulty, body = _parse_header(text)
 
+        # Auto-select best strategy based on document structure.
+        if strat == "auto":
+            strat = self._choose_best_strategy(body)
+            log.debug("Auto strategy selected '%s' for source '%s'.", strat, source)
+
         if strat == "section":
             raw_chunks = _split_by_section(body)
         elif strat == "sentence":
-            raw_chunks = _split_by_sentence(body)
+            raw_chunks = _split_by_sentence(body, self._sentence_max_chars)
         elif strat == "fixed":
             raw_chunks = _split_fixed(body, self._chunk_size, self._overlap)
         else:
@@ -216,6 +240,162 @@ class DocumentChunker:
             all_chunks.extend(self.chunk_file(path, strategy=strategy))
         return all_chunks
 
+    # ------------------------------------------------------------------
+    # Analysis helpers
+    # ------------------------------------------------------------------
+
+    def chunk_statistics(self, chunks: list[Chunk]) -> dict:
+        """Return summary statistics for a list of chunks.
+
+        Parameters
+        ----------
+        chunks:
+            List of Chunk objects to analyse.
+
+        Returns
+        -------
+        dict with keys:
+            chunks, average_size, largest, smallest, strategy
+        """
+        if not chunks:
+            return {
+                "chunks":       0,
+                "average_size": 0,
+                "largest":      0,
+                "smallest":     0,
+                "strategy":     "n/a",
+            }
+
+        sizes    = [c.char_count for c in chunks]
+        strategy = chunks[0].strategy if chunks else "n/a"
+
+        return {
+            "chunks":       len(chunks),
+            "average_size": round(sum(sizes) / len(sizes)),
+            "largest":      max(sizes),
+            "smallest":     min(sizes),
+            "strategy":     strategy,
+        }
+
+    def preview_chunks(
+        self,
+        chunks:    list[Chunk],
+        max_chars: int = 80,
+    ) -> str:
+        """Return a human-readable preview of all chunks.
+
+        Useful for CLI inspection and debugging.
+
+        Parameters
+        ----------
+        chunks:    List of Chunk objects to preview.
+        max_chars: Maximum characters of chunk text to show per chunk.
+
+        Returns
+        -------
+        str  Multi-line preview string, ready to print.
+        """
+        if not chunks:
+            return "(no chunks)"
+
+        lines: list[str] = []
+        sep = "-" * (min(max_chars, 60))
+
+        for i, chunk in enumerate(chunks):
+            preview = chunk.text[:max_chars].replace("\n", " ")
+            if len(chunk.text) > max_chars:
+                preview += "…"
+            lines.append(f"Chunk {i}  [{chunk.strategy} | {chunk.char_count} chars | "
+                          f"score={chunk.quality_score:.2f}]")
+            lines.append(preview)
+            lines.append(sep)
+
+        return "\n".join(lines)
+
+    def compare_strategies(self, text: str) -> dict[str, int]:
+        """Chunk the same text with all three concrete strategies and compare.
+
+        Useful for choosing the best strategy for a document type and
+        for project reports comparing retrieval accuracy per strategy.
+
+        Parameters
+        ----------
+        text:  The document text to analyse.
+
+        Returns
+        -------
+        dict mapping strategy name → number of chunks produced.
+
+        Example
+        -------
+        >>> chunker.compare_strategies(text)
+        {"section": 8, "sentence": 23, "fixed": 14}
+        """
+        results: dict[str, int] = {}
+        for strat in ("section", "sentence", "fixed"):
+            chunks = self.chunk_text(text, source="_compare", strategy=strat)  # type: ignore
+            results[strat] = len(chunks)
+            log.debug("compare_strategies: '%s' → %d chunks.", strat, len(chunks))
+        return results
+
+    def validate_chunks(
+        self,
+        chunks:   list[Chunk],
+        max_size: int = DEFAULT_CHUNK_SIZE * 2,
+    ) -> dict:
+        """Validate a list of chunks and report quality issues.
+
+        Parameters
+        ----------
+        chunks:   List of Chunk objects to inspect.
+        max_size: Character count above which a chunk is flagged as oversized.
+
+        Returns
+        -------
+        dict with keys:
+            empty_chunks, duplicate_chunks, oversized_chunks
+        """
+        empty_count     = sum(1 for c in chunks if not c.text.strip())
+        oversized_count = sum(1 for c in chunks if c.char_count > max_size)
+
+        texts = [c.text for c in chunks if c.text.strip()]
+        duplicate_count = len(texts) - len(set(texts))
+
+        return {
+            "empty_chunks":     empty_count,
+            "duplicate_chunks": duplicate_count,
+            "oversized_chunks": oversized_count,
+        }
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _choose_best_strategy(self, body: str) -> ChunkStrategy:
+        """Select the most appropriate chunking strategy for a document body.
+
+        Decision rules (in priority order):
+          1. Two or more headings (# / ## / ###) → section
+          2. Ten or more sentence-ending punctuation marks → sentence
+          3. Everything else → fixed
+
+        Parameters
+        ----------
+        body:  The document body text (after header extraction).
+
+        Returns
+        -------
+        ChunkStrategy  One of "section", "sentence", or "fixed".
+        """
+        heading_count  = len(re.findall(r"(?m)^#{1,6}\s", body))
+        sentence_count = len(re.findall(r"[.!?]", body))
+
+        if heading_count >= 2:
+            return "section"
+        if sentence_count >= 10:
+            return "sentence"
+        return "fixed"
+
 
 # ============================================================
 # PRIVATE CHUNKING STRATEGIES
@@ -244,7 +424,8 @@ def _parse_header(text: str) -> tuple[str, str, str]:
             topic = line.split(":", 1)[1].strip()
         elif stripped.startswith("difficulty:"):
             difficulty = line.split(":", 1)[1].strip()
-        elif line.startswith("## "):
+        elif re.match(r"^#{2,6}\s", line):
+            # ## or deeper heading starts the body — skip the h1 title line.
             body_start = i
             break
 
@@ -253,43 +434,61 @@ def _parse_header(text: str) -> tuple[str, str, str]:
 
 
 def _split_by_section(text: str) -> list[str]:
-    """Split on ## headings — each heading starts a new chunk.
+    """Split on any Markdown heading level (#, ##, ###, ####, #####).
 
-    This is the default strategy because tutorial documents are already
-    organised into meaningful sections that map well to individual topics.
+    Supports all heading levels so tutorials using mixed heading depths
+    are chunked correctly, not just those using exactly ##.
     """
-    # Split on lines starting with ##
-    parts = re.split(r"(?m)^(?=## )", text)
+    parts = re.split(r"(?m)^(?=#{1,6}\s)", text)
     return [p.strip() for p in parts if p.strip()]
 
 
-def _split_by_sentence(text: str) -> list[str]:
-    """Split on sentence boundaries (. ! ?).
+def _split_by_sentence(text: str, max_chars: int = DEFAULT_SENTENCE_MAX_CHARS) -> list[str]:
+    """Group sentences into chunks up to max_chars characters.
 
-    Groups sentences into chunks of at most 5 sentences to keep
-    each chunk focused while retaining context.
+    Instead of a fixed group size (e.g. always 5 sentences), sentences
+    are accumulated until adding the next would exceed max_chars.
+    This produces naturally-sized chunks regardless of sentence length.
+
+    Parameters
+    ----------
+    text:      Input text.
+    max_chars: Maximum characters per chunk group.
     """
-    # Simple sentence splitter — handles common abbreviations imperfectly
-    # but is good enough for clean tutorial text.
     sentences = re.split(r"(?<=[.!?])\s+", text.strip())
     sentences = [s.strip() for s in sentences if s.strip()]
 
-    GROUP_SIZE = 5
-    groups: list[str] = []
-    for i in range(0, len(sentences), GROUP_SIZE):
-        group = " ".join(sentences[i:i + GROUP_SIZE])
-        groups.append(group)
+    groups : list[str] = []
+    current: list[str] = []
+    current_len = 0
+
+    for sentence in sentences:
+        sentence_len = len(sentence)
+        # If adding this sentence would exceed max_chars, flush current group.
+        if current and current_len + sentence_len + 1 > max_chars:
+            groups.append(" ".join(current))
+            current     = []
+            current_len = 0
+        current.append(sentence)
+        current_len += sentence_len + 1
+
+    if current:
+        groups.append(" ".join(current))
 
     return groups
 
 
 def _split_fixed(text: str, chunk_size: int, overlap: int) -> list[str]:
-    """Split text into fixed-size character chunks with optional overlap.
+    """Split text into fixed-size character chunks, snapping to word boundaries.
+
+    Instead of cutting exactly at chunk_size characters (which can split
+    words mid-way), the split point is moved back to the nearest space or
+    newline so chunks always end on a complete word.
 
     Parameters
     ----------
     text:       Input text.
-    chunk_size: Maximum characters per chunk.
+    chunk_size: Target maximum characters per chunk.
     overlap:    Characters shared between adjacent chunks.
 
     Raises
@@ -308,12 +507,68 @@ def _split_fixed(text: str, chunk_size: int, overlap: int) -> list[str]:
 
     while start < length:
         end = min(start + chunk_size, length)
-        chunks.append(text[start:end])
-        start += chunk_size - overlap
-        if start >= length:
-            break
 
-    return chunks
+        # Snap end backwards to nearest whitespace to avoid splitting words.
+        if end < length:
+            snap = text.rfind(" ", start, end)
+            if snap == -1:
+                snap = text.rfind("\n", start, end)
+            if snap > start:          # only snap if we found a boundary
+                end = snap
+
+        chunks.append(text[start:end].strip())
+        start += (end - start) - overlap
+        # Guard: always advance by at least 1 to prevent infinite loops.
+        if start <= 0 or (end - start) - overlap <= 0:
+            start = end
+
+    return [c for c in chunks if c]
+
+
+def _score_chunk(text: str) -> float:
+    """Score a chunk's embedding quality on a 0.0–1.0 scale.
+
+    Scoring factors:
+      - Length:         optimal around 200–400 chars
+      - Has heading:    +0.2 bonus (headings anchor semantic meaning)
+      - Has sentences:  +0.2 bonus (complete thoughts embed better)
+      - Has code block: +0.1 bonus (technical content is meaningful)
+
+    Parameters
+    ----------
+    text:  The raw chunk text.
+
+    Returns
+    -------
+    float  Quality score in [0.0, 1.0].
+    """
+    if not text.strip():
+        return 0.0
+
+    score = 0.0
+
+    # Length score: 0–0.5 based on character count
+    length = len(text)
+    if 100 <= length <= 600:
+        score += 0.5
+    elif length < 100:
+        score += length / 200.0          # short chunks score proportionally
+    else:
+        score += max(0.0, 0.5 - (length - 600) / 2000.0)   # penalise very long
+
+    # Heading bonus
+    if re.match(r"^#{1,6}\s", text):
+        score += 0.2
+
+    # Sentence bonus (at least two complete sentences)
+    if len(re.findall(r"[.!?][\s\n]", text)) >= 2:
+        score += 0.2
+
+    # Code block bonus
+    if "```" in text or re.search(r"(?m)^    \S", text):
+        score += 0.1
+
+    return round(min(score, 1.0), 4)
 
 
 def _make_id(source: str, index: int) -> str:
