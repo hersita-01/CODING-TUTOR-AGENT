@@ -281,7 +281,7 @@ def _print_previews(
 
         for strat in strats_to_show:
             try:
-                chunks = chunker.chunk_text(text, source=path.name, strategy=ChunkStrategy(strat))
+                chunks = chunker.chunk_text(text, source=path.name, strategy=strat)
             except Exception as exc:
                 print(f"  [{strat}] Chunking failed: {exc}")
                 continue
