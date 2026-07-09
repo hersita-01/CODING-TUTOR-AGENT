@@ -38,8 +38,8 @@ for _p in [str(_here), str(_day3), str(_day2), str(_week5)]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from chunking_evaluator import ChunkingEvaluator, STRATEGIES, EvaluationReport
-from document_chunker   import DocumentChunker
+from chunking_evaluator import ChunkingEvaluator, EvaluationReport, STRATEGIES
+from document_chunker   import ChunkStrategy, DocumentChunker
 
 logging.basicConfig(
     level  = logging.WARNING,
@@ -147,16 +147,27 @@ Examples:
     print("  WEEK 5 DAY 4 — Chunking Strategy Evaluator")
     print("=" * 60)
 
-    # ── Determine input ───────────────────────────────────────────────
+    # ── Determine and validate input ─────────────────────────────────
     single_file: Path | None = args.file
     docs_dir:    Path | None = None if single_file else args.docs_dir
 
     if single_file:
+        if not single_file.exists() or not single_file.is_file():
+            log.error("File not found or not a file: '%s'.", single_file)
+            sys.exit(1)
         print(f"  Mode         : single file")
         print(f"  File         : {single_file}")
     else:
+        if not docs_dir.is_dir():
+            log.error("Not a directory: '%s'.", docs_dir)
+            sys.exit(1)
+        txt_files = [p for p in docs_dir.glob("*.txt") if not p.name.startswith(".")]
+        if not txt_files:
+            log.error("No .txt tutorial files found in '%s'.", docs_dir)
+            sys.exit(1)
         print(f"  Mode         : directory")
         print(f"  Docs dir     : {docs_dir}")
+        print(f"  Files found  : {len(txt_files)}")
 
     print(f"  Embed timing : {args.embed_timing}")
     print(f"  Preview      : {args.preview}")
@@ -174,8 +185,11 @@ Examples:
             chunker            = chunker,
             measure_embed_time = args.embed_timing,
         )
+    except ValueError as exc:
+        log.error("Invalid chunker settings: %s", exc)
+        sys.exit(1)
     except Exception as exc:
-        print(f"  ERROR: Failed to initialise evaluator: {exc}")
+        log.error("Failed to initialise evaluator: %s", exc)
         sys.exit(1)
 
     # ── Run evaluation ────────────────────────────────────────────────
@@ -236,7 +250,7 @@ def _print_previews(
     strategy:    If set, only preview this strategy.
     max_chars:   Characters to show per chunk.
     """
-    chunker = evaluator._chunker
+    chunker = evaluator.chunker
 
     # Determine which files to preview.
     if single_file:
@@ -267,7 +281,7 @@ def _print_previews(
 
         for strat in strats_to_show:
             try:
-                chunks = chunker.chunk_text(text, source=path.name, strategy=strat)  # type: ignore
+                chunks = chunker.chunk_text(text, source=path.name, strategy=ChunkStrategy(strat))
             except Exception as exc:
                 print(f"  [{strat}] Chunking failed: {exc}")
                 continue
@@ -345,7 +359,7 @@ def _save_report(
         path.write_text(content, encoding="utf-8")
         print(f"  Report saved to: {path}")
     except Exception as exc:
-        print(f"  ERROR: Could not save report: {exc}")
+        log.error("Could not save report to '%s': %s", path, exc)
 
 
 # ============================================================
