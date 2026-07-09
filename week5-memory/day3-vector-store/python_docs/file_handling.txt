@@ -1,0 +1,98 @@
+# File Handling in Python
+topic: file_handling
+difficulty: beginner
+
+## Introduction
+
+Most programs need to read or write files, whether for settings, logs, or large datasets. Python provides simple built-in functions for file handling.
+
+## Concept Overview
+
+open() returns a file object for reading or writing. Modes control access: "r" for read (default), "w" for write (overwrites), "a" for append. The with statement is the safe way to work with files — it closes them automatically, even if an error occurs.
+
+## Syntax
+
+with open("filename", "mode") as file_object:
+    statement
+
+## Explanation
+
+read() returns the whole file as one string; readlines() returns a list of lines. write() writes a string; writelines() writes a list of strings. Always prefer with over manually opening and closing files.
+
+## Example 1
+
+Code:
+
+with open("sample.txt", "w") as file:
+    file.write("Hello, this is a sample file.\n")
+    file.write("Python file handling is easy.\n")
+
+with open("sample.txt", "r") as file:
+    content = file.read()
+
+print(content)
+
+Explanation:
+
+Writes two lines in write mode, then reopens in read mode to load the entire content into one string using read().
+
+Output:
+
+Hello, this is a sample file.
+Python file handling is easy.
+
+## Example 2
+
+Code:
+
+lines_to_write = ["Apples\n", "Bananas\n", "Cherries\n"]
+
+with open("fruits.txt", "w") as file:
+    file.writelines(lines_to_write)
+
+with open("fruits.txt", "r") as file:
+    for line in file:
+        print("Fruit:", line.strip())
+
+Explanation:
+
+writelines() writes a list of lines at once. Iterating the reopened file line by line, strip() removes trailing newlines for clean output.
+
+Output:
+
+Fruit: Apples
+Fruit: Bananas
+Fruit: Cherries
+
+## Common Beginner Mistakes
+
+Not using with can leave files unclosed or unsaved. Using write mode when append was intended erases existing content. Reading a nonexistent file raises FileNotFoundError. Forgetting strip() leaves extra blank lines.
+
+## Debugging Tips
+
+On FileNotFoundError, verify the path and current working directory. If content looks wrong, check whether write mode accidentally overwrote existing data.
+
+## Best Practices
+
+Always use with for automatic closing. Choose the correct mode deliberately. Wrap file operations in try/except for files that might not exist. Iterate line by line for large files.
+
+## Interview Questions
+
+Question 1: Why use the with statement for files.
+Answer: It ensures the file closes automatically, even if an error occurs.
+
+Question 2: Difference between write mode and append mode.
+Answer: Write overwrites existing content; append adds to the end.
+
+Question 3: What exception occurs opening a missing file to read.
+Answer: FileNotFoundError.
+
+Question 4: Difference between read and readlines.
+Answer: read returns the whole file as a string; readlines returns a list of lines.
+
+Question 5: Why iterate a file line by line for large files.
+Answer: It's more memory efficient than loading the entire file at once.
+
+## Summary
+
+File handling with with, correct modes, and exception handling lets Python programs reliably read and write external data.

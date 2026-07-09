@@ -1,0 +1,101 @@
+# Dictionaries in Python
+topic: dictionaries
+difficulty: beginner
+
+## Introduction
+
+A dictionary stores data as key-value pairs, giving fast access to values through unique keys. Dictionaries are ideal for representing structured records and mappings.
+
+## Concept Overview
+
+Dictionaries use curly braces with key-value pairs; keys must be unique and are usually strings or numbers, while values can be any type. Lookups by key are fast. Built-in methods like keys(), values(), items(), and get() make retrieval and manipulation straightforward.
+
+## Syntax
+
+dictionary_name = {"key1": value1, "key2": value2}
+
+dictionary_name["key1"]
+
+## Explanation
+
+Accessing a missing key with square brackets raises a KeyError; get() avoids this by returning None or a default instead. Assigning to a new key adds a pair; assigning to an existing key updates it. del or pop() removes a pair.
+
+## Example 1
+
+Code:
+
+student = {"name": "Alice", "age": 22, "course": "Computer Science"}
+
+print("Name:", student["name"])
+print("Age:", student.get("age"))
+
+student["age"] = 23
+student["grade"] = "A"
+
+print("Updated dictionary:", student)
+
+Explanation:
+
+Reads values with brackets and get(), then updates age and adds a new grade key, showing dictionaries can change after creation.
+
+Output:
+
+Name: Alice
+Age: 22
+Updated dictionary: {'name': 'Alice', 'age': 23, 'course': 'Computer Science', 'grade': 'A'}
+
+## Example 2
+
+Code:
+
+inventory = {"apples": 50, "bananas": 30, "oranges": 20}
+
+for item, quantity in inventory.items():
+    print(f"{item}: {quantity} units")
+
+total_items = sum(inventory.values())
+print("Total items in inventory:", total_items)
+
+Explanation:
+
+items() yields key-value pairs for iteration. sum(inventory.values()) adds up all quantities across the dictionary.
+
+Output:
+
+apples: 50 units
+bananas: 30 units
+oranges: 20 units
+Total items in inventory: 100
+
+## Common Beginner Mistakes
+
+Accessing a missing key with brackets raises a KeyError; get() is safer. Using a mutable object like a list as a key raises a TypeError, since keys must be immutable. Beginners also confuse keys, values, and items when iterating.
+
+## Debugging Tips
+
+On a KeyError, use get() with a default to check safely. Print the dictionary to inspect its current state if updates seem missing or wrong.
+
+## Best Practices
+
+Use get() when a key's presence is uncertain. Choose descriptive, consistent key names. Pick the right iteration method — items, keys, or values — based on what your loop needs.
+
+## Interview Questions
+
+Question 1: What is a dictionary in Python.
+Answer: An unordered, mutable collection of unique key-value pairs.
+
+Question 2: Difference between bracket access and get().
+Answer: Brackets raise KeyError if missing; get() returns None or a default.
+
+Question 3: Can a list be a dictionary key.
+Answer: No, keys must be immutable; lists are mutable.
+
+Question 4: What does items() return.
+Answer: A view of key-value pairs as tuples, used for iteration.
+
+Question 5: How do you remove a key-value pair.
+Answer: Use del dictionary_name["key"] or dictionary_name.pop("key").
+
+## Summary
+
+Dictionaries offer fast key-based access to structured data. Use get() to avoid KeyErrors and choose the right iteration method for your needs.

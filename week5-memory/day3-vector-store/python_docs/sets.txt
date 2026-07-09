@@ -1,0 +1,104 @@
+# Sets in Python
+topic: sets
+difficulty: beginner
+
+## Introduction
+
+A set is an unordered collection of unique items, useful for removing duplicates or performing operations like union and intersection between collections.
+
+## Concept Overview
+
+Sets use curly braces or the set() function and automatically drop duplicates. Being unordered, they don't support indexing or slicing. Sets support union, intersection, difference, and symmetric difference — powerful for comparing collections of data.
+
+## Syntax
+
+set_name = {item1, item2, item3}
+
+empty_set = set()
+
+## Explanation
+
+Since sets are unordered, use iteration or the in operator to check membership. add() inserts an item; remove() deletes one but errors if missing, while discard() doesn't. Union (|) combines sets; intersection (&) finds common elements.
+
+## Example 1
+
+Code:
+
+fruits_available = {"apple", "banana", "cherry", "mango"}
+fruits_ordered = {"banana", "mango", "grape"}
+
+common_fruits = fruits_available & fruits_ordered
+all_fruits = fruits_available | fruits_ordered
+unavailable = fruits_ordered - fruits_available
+
+print("Common fruits:", common_fruits)
+print("All fruits combined:", all_fruits)
+print("Ordered but unavailable:", unavailable)
+
+Explanation:
+
+& finds fruits in both sets, | combines all unique fruits, and - finds fruits ordered but not available.
+
+Output:
+
+Common fruits: {'banana', 'mango'}
+All fruits combined: {'apple', 'banana', 'cherry', 'mango', 'grape'}
+Ordered but unavailable: {'grape'}
+
+## Example 2
+
+Code:
+
+numbers = [4, 8, 15, 16, 15, 23, 4, 42]
+
+unique_numbers = set(numbers)
+print("Unique numbers:", unique_numbers)
+
+unique_numbers.add(100)
+unique_numbers.discard(8)
+
+print("Updated set:", unique_numbers)
+print("Is 15 in the set:", 15 in unique_numbers)
+
+Explanation:
+
+Converting the list to a set removes duplicates. add() inserts 100; discard() safely removes 8; in checks membership.
+
+Output:
+
+Unique numbers: {4, 8, 15, 16, 23, 42}
+Updated set: {4, 100, 15, 16, 23, 42}
+Is 15 in the set: True
+
+## Common Beginner Mistakes
+
+Empty curly braces {} create a dictionary, not a set — use set() instead. Sets don't support indexing, so bracket access raises a TypeError. remove() raises a KeyError if the value is missing; discard() does not.
+
+## Debugging Tips
+
+On indexing errors, confirm the object is really a set with type(). If remove() raises a KeyError, switch to discard() or check membership with in first.
+
+## Best Practices
+
+Use sets to eliminate duplicates or compare collections, not when order matters. Prefer discard() over remove() when uncertain if a value exists.
+
+## Interview Questions
+
+Question 1: What distinguishes a set from a list.
+Answer: A set holds unique, unordered elements; a list allows duplicates and order.
+
+Question 2: How do you create an empty set.
+Answer: Use set(), since {} creates a dictionary.
+
+Question 3: Difference between remove and discard.
+Answer: remove raises KeyError if missing; discard does not.
+
+Question 4: What does set intersection represent.
+Answer: Elements common to both sets.
+
+Question 5: Why prefer sets for membership testing.
+Answer: Their hash-based implementation makes lookups much faster than lists.
+
+## Summary
+
+Sets store unique, unordered items and support fast membership checks plus union, intersection, and difference operations.

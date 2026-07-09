@@ -1,0 +1,117 @@
+# Object Oriented Programming in Python
+topic: object_oriented_programming
+difficulty: beginner
+
+## Introduction
+
+Object oriented programming organizes code around objects that combine data and behavior. Python fully supports this, letting you model real-world entities as classes and objects.
+
+## Concept Overview
+
+A class is a blueprint defining attributes (data) and methods (behavior). An object is a specific instance of a class. Core principles: encapsulation bundles data and methods; inheritance lets classes derive from others; polymorphism lets different classes share a common interface; abstraction hides implementation detail.
+
+## Syntax
+
+class ClassName:
+    def __init__(self, parameter1):
+        self.attribute1 = parameter1
+
+    def method_name(self):
+        statement
+
+## Explanation
+
+__init__ runs automatically when creating an object, initializing attributes. self refers to the specific instance and must be the first parameter of every method, though Python passes it automatically. Inheritance is set up by naming the parent class in parentheses.
+
+## Example 1
+
+Code:
+
+class Student:
+    def __init__(self, name, age):
+        self.name = name
+        self.age = age
+
+    def introduce(self):
+        return f"Hi, I am {self.name} and I am {self.age} years old."
+
+student1 = Student("Alice", 21)
+student2 = Student("Bob", 23)
+
+print(student1.introduce())
+print(student2.introduce())
+
+Explanation:
+
+Two Student objects each keep their own name and age. introduce() returns a formatted string using self to access instance attributes.
+
+Output:
+
+Hi, I am Alice and I am 21 years old.
+Hi, I am Bob and I am 23 years old.
+
+## Example 2
+
+Code:
+
+class Animal:
+    def __init__(self, name):
+        self.name = name
+
+    def make_sound(self):
+        return "Some generic sound"
+
+class Dog(Animal):
+    def make_sound(self):
+        return "Woof!"
+
+class Cat(Animal):
+    def make_sound(self):
+        return "Meow!"
+
+animals = [Dog("Rex"), Cat("Whiskers")]
+
+for animal in animals:
+    print(f"{animal.name} says {animal.make_sound()}")
+
+Explanation:
+
+Dog and Cat inherit from Animal and override make_sound(). Looping over mixed objects calls each one's own version — polymorphism in action.
+
+Output:
+
+Rex says Woof!
+Whiskers says Meow!
+
+## Common Beginner Mistakes
+
+Forgetting self in a method definition causes a TypeError. Overriding __init__ in a subclass without calling the parent's version can leave attributes missing. Confusing shared class attributes with per-object instance attributes is also common.
+
+## Debugging Tips
+
+On a TypeError about arguments, check that self is included in the method definition. If attributes seem wrong, print object.__dict__ to inspect the actual instance state.
+
+## Best Practices
+
+Name classes in PascalCase. Keep __init__ focused on initializing attributes. Use inheritance only for genuine "is-a" relationships to avoid overly complex hierarchies.
+
+## Interview Questions
+
+Question 1: Difference between a class and an object.
+Answer: A class is a blueprint; an object is an instance created from it.
+
+Question 2: What is __init__ used for.
+Answer: It's the constructor, run automatically to initialize attributes.
+
+Question 3: What does self represent.
+Answer: The specific instance a method is being called on.
+
+Question 4: What is inheritance.
+Answer: A mechanism letting a class reuse attributes and methods from another.
+
+Question 5: What is polymorphism.
+Answer: Different classes sharing a common method interface, each with its own implementation.
+
+## Summary
+
+OOP models real-world entities as classes and objects. Understand self, inheritance, and polymorphism to design reusable, well-structured programs.

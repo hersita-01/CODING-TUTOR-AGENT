@@ -19,6 +19,10 @@ import logging
 import sys
 import time
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+from huggingface_hub import login
+
 
 # ── Path setup ────────────────────────────────────────────────────────
 _here  = Path(__file__).resolve().parent
@@ -28,6 +32,15 @@ _week5 = _here.parent
 for _p in [str(_here), str(_day2), str(_week5)]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
+
+# Load environment variables
+load_dotenv()
+
+# Authenticate with Hugging Face (optional but recommended)
+hf_token = os.getenv("HF_TOKEN")
+
+if hf_token:
+    login(token=hf_token)
 
 from chroma_manager   import ChromaManager
 from document_chunker import DocumentChunker
@@ -56,9 +69,14 @@ def main() -> None:
     parser.add_argument(
         "--strategy",
         type    = str,
-        default = "section",
+        default = "sentence",
         choices = ["section", "sentence", "fixed", "auto"],
-        help    = "Chunking strategy (default: section).",
+        help    = (
+            "Chunking strategy (default: sentence). Day 4's evaluator "
+            "(evaluate_chunking.py) measured 'sentence' as the highest "
+            "RAG-scoring strategy for this corpus — see "
+            "day4-chunking-eval/ for the full comparison."
+        ),
     )
     args = parser.parse_args()
 
