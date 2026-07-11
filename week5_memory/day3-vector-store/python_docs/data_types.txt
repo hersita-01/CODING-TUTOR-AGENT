@@ -1,0 +1,103 @@
+# Data Types in Python
+topic: data_types
+difficulty: beginner
+
+## Introduction
+
+Every value in Python has a data type, which decides what it represents and what operations work on it. Knowing data types helps you understand how variables behave in expressions, comparisons, and function calls.
+
+## Concept Overview
+
+Python's built-in types include int, float, str, bool, and compound types like list, tuple, dict, and set. Python is dynamically typed, so a variable's type is inferred from its value, not declared. Use type() to check a variable's type, and functions like int(), float(), and str() to convert between types.
+
+## Syntax
+
+type(variable_name)
+
+int(value)
+float(value)
+str(value)
+
+## Explanation
+
+int stores whole numbers, float stores decimals. str holds text in quotes. bool holds only True or False, common in conditions. Type conversion (casting) changes a value's type, often needed for user input or calculations.
+
+## Example 1
+
+Code:
+
+age = 25
+height = 5.9
+name = "John"
+is_student = True
+
+print(type(age))
+print(type(height))
+print(type(name))
+print(type(is_student))
+
+Explanation:
+
+Four variables hold different types. type() shows each one: int, float, str, and bool, inferred automatically from the assigned values.
+
+Output:
+
+<class 'int'>
+<class 'float'>
+<class 'str'>
+<class 'bool'>
+
+## Example 2
+
+Code:
+
+price_text = "150"
+price_number = int(price_text)
+total_price = price_number * 3
+
+print("Original type:", type(price_text))
+print("Converted type:", type(price_number))
+print("Total price:", total_price)
+
+Explanation:
+
+price_text starts as a string, so int() converts it before multiplying. This shows why conversion matters for arithmetic on text-based values.
+
+Output:
+
+Original type: <class 'str'>
+Converted type: <class 'int'>
+Total price: 450
+
+## Common Beginner Mistakes
+
+Mixing incompatible types, like adding a string and an int, raises a TypeError. input() always returns a string, even for numbers. Dividing two ints with / always gives a float, which can surprise beginners.
+
+## Debugging Tips
+
+On a TypeError, check variable types with type() to spot mismatches. Always convert user input to the right type before calculations, and print intermediate values to trace type issues.
+
+## Best Practices
+
+Convert and validate user input before using it in calculations. Use names that hint at type, like user_age. Prefer explicit conversion functions over relying on implicit coercion.
+
+## Interview Questions
+
+Question 1: What are the basic built-in data types in Python.
+Answer: int, float, str, and bool, plus compound types like list, tuple, dict, and set.
+
+Question 2: How do you check a variable's data type.
+Answer: Use the built-in type function, for example type(variable_name).
+
+Question 3: What type does input() return by default.
+Answer: Always a string, regardless of what the user types.
+
+Question 4: What happens when dividing two integers with a single slash.
+Answer: The result is always a float, even for an even division.
+
+Question 5: How do you convert a string to an integer.
+Answer: Use int(), for example int("25"), which returns 25.
+
+## Summary
+
+Python's dynamic typing infers types from values, no declarations needed. Use type() to check and int/float/str to convert. Watch for mismatched types in arithmetic and unconverted input.

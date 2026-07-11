@@ -1,0 +1,97 @@
+# Functions in Python
+topic: functions
+difficulty: beginner
+
+## Introduction
+
+A function is a reusable block of code that performs a specific task. Functions organize code into logical sections, reduce repetition, and make programs easier to read and test.
+
+## Concept Overview
+
+Functions are defined with def, followed by a name and parameters — placeholders for values passed in as arguments. return sends a value back to the caller; without it, a function returns None. Default parameter values let functions be called with fewer arguments.
+
+## Syntax
+
+def function_name(parameter1, parameter2):
+    statement
+    return value
+
+## Explanation
+
+Calling a function runs its body using the given arguments in place of parameters. return exits immediately and sends back a value; code after it won't run. Keyword arguments let you pass values by parameter name explicitly.
+
+## Example 1
+
+Code:
+
+def calculate_area(length, width):
+    area = length * width
+    return area
+
+result = calculate_area(5, 3)
+print("Area of rectangle:", result)
+
+result2 = calculate_area(length=4, width=6)
+print("Area with keyword arguments:", result2)
+
+Explanation:
+
+calculate_area multiplies two parameters and returns the result. Called first with positional, then keyword arguments — both work the same way.
+
+Output:
+
+Area of rectangle: 15
+Area with keyword arguments: 24
+
+## Example 2
+
+Code:
+
+def greet_user(name, greeting="Hello"):
+    message = f"{greeting}, {name}!"
+    return message
+
+print(greet_user("Alice"))
+print(greet_user("Bob", "Good morning"))
+
+Explanation:
+
+greeting defaults to "Hello" if not provided. The first call uses the default; the second overrides it with a custom greeting.
+
+Output:
+
+Hello, Alice!
+Good morning, Bob!
+
+## Common Beginner Mistakes
+
+Forgetting return means the function gives back None unexpectedly. Wrong number or order of arguments causes a TypeError or incorrect results. Using mutable default arguments, like an empty list, can cause shared state bugs across calls.
+
+## Debugging Tips
+
+If results look wrong, check that return is present and correctly placed. Print the returned value right after the call to confirm whether the issue is inside the function or after it.
+
+## Best Practices
+
+Give functions clear, verb-based names like calculate_area. Keep each function focused on one task. Avoid mutable objects as default parameter values.
+
+## Interview Questions
+
+Question 1: What is the difference between a parameter and an argument.
+Answer: A parameter is defined in the function signature; an argument is the actual value passed in.
+
+Question 2: What does a function return without a return statement.
+Answer: None, by default.
+
+Question 3: What is a default parameter value.
+Answer: A value used automatically when the caller doesn't provide one.
+
+Question 4: What's the difference between positional and keyword arguments.
+Answer: Positional match by order; keyword match by explicit parameter name.
+
+Question 5: Why avoid mutable default arguments.
+Answer: They're shared across all calls, causing unexpected behavior.
+
+## Summary
+
+Functions group reusable logic behind a name. Use return values and default parameters wisely, and avoid mutable defaults to prevent shared-state bugs.

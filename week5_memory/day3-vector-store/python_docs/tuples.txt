@@ -1,0 +1,105 @@
+# Tuples in Python
+topic: tuples
+difficulty: beginner
+
+## Introduction
+
+A tuple is an ordered collection like a list, but immutable — its contents can't change after creation. This makes tuples ideal for fixed collections of related values.
+
+## Concept Overview
+
+Tuples use parentheses with comma-separated items. They support indexing and slicing like lists, but no modification methods exist since tuples are immutable. Tuples can be dictionary keys, unlike lists. Tuple unpacking assigns each element to a separate variable in one line.
+
+## Syntax
+
+tuple_name = (item1, item2, item3)
+
+single_item_tuple = (item1,)
+
+## Explanation
+
+Indexing and slicing work the same as lists. Tuples support count() and index() but not append or remove. A single-element tuple needs a trailing comma, or Python won't treat it as a tuple.
+
+## Example 1
+
+Code:
+
+coordinates = (10, 20)
+person = ("Alice", 25, "Engineer")
+
+print("Coordinates:", coordinates)
+print("X value:", coordinates[0])
+
+name, age, profession = person
+print("Name:", name)
+print("Age:", age)
+print("Profession:", profession)
+
+Explanation:
+
+Accesses coordinates by index, then unpacks person into three variables in one line — a convenient way to extract multiple values.
+
+Output:
+
+Coordinates: (10, 20)
+X value: 10
+Name: Alice
+Age: 25
+Profession: Engineer
+
+## Example 2
+
+Code:
+
+def get_min_max(numbers):
+    return min(numbers), max(numbers)
+
+values = [15, 42, 8, 99, 23]
+result = get_min_max(values)
+
+print("Result tuple:", result)
+print("Minimum:", result[0])
+print("Maximum:", result[1])
+
+Explanation:
+
+get_min_max returns two values together as a tuple. The caller stores and indexes the tuple to retrieve each value separately.
+
+Output:
+
+Result tuple: (8, 99)
+Minimum: 8
+Maximum: 99
+
+## Common Beginner Mistakes
+
+Trying to modify a tuple raises a TypeError since item assignment isn't supported. Forgetting the trailing comma for a single-element tuple creates a plain value instead. Unpacking into the wrong number of variables raises a ValueError.
+
+## Debugging Tips
+
+On a TypeError from item assignment, confirm the object is really a tuple with type(). On a ValueError during unpacking, compare len(tuple) to the number of variables.
+
+## Best Practices
+
+Use tuples for fixed data that shouldn't change, like coordinates. Use unpacking for readable multi-value returns. Remember the trailing comma for single-element tuples.
+
+## Interview Questions
+
+Question 1: What's the main difference between a list and a tuple.
+Answer: Lists are mutable; tuples are immutable.
+
+Question 2: How do you create a single-element tuple.
+Answer: Add a trailing comma, like (item,).
+
+Question 3: Why prefer a tuple over a list sometimes.
+Answer: Immutability and usability as dictionary keys.
+
+Question 4: What is tuple unpacking.
+Answer: Assigning each tuple element to a separate variable in one statement.
+
+Question 5: Can a tuple contain mutable objects like lists.
+Answer: Yes — the tuple itself is immutable, but a list inside it can still change.
+
+## Summary
+
+Tuples are immutable, ordered collections ideal for fixed data and returning multiple values. Use unpacking for clean, readable code.
