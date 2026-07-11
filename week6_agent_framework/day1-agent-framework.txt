@@ -1,0 +1,821 @@
+# Week 6 – Day 1: Tour of Agent Frameworks (Complete Theory)
+
+## Objective of Day 1
+
+The goal of Day 1 is to understand the ecosystem of modern AI agent frameworks and decide when to use a framework and when to build systems manually.
+
+By the end of Day 1, you should understand:
+
+* Why AI frameworks exist.
+* The differences between LangChain, LangGraph, LlamaIndex, and Haystack.
+* The advantages and disadvantages of each framework.
+* Which framework is best suited for the AI Coding Tutor project.
+* When frameworks are useful and when hand-written code is better.
+
+---
+
+# 1. Why Do Agent Frameworks Exist?
+
+As AI applications become larger, manually managing prompts, memory, tools, and workflows becomes difficult.
+
+A simple chatbot can be implemented with:
+
+```text
+User Input
+     ↓
+Prompt
+     ↓
+LLM
+     ↓
+Response
+```
+
+However, production AI systems often require:
+
+* Memory.
+* Tool usage.
+* Retrieval systems.
+* Multi-step reasoning.
+* Human approval.
+* State persistence.
+* Logging and debugging.
+
+Without frameworks, developers must implement all of these manually.
+
+Frameworks provide reusable abstractions that simplify building complex AI systems.
+
+---
+
+# 2. What Is an AI Agent?
+
+An AI agent is a system that can:
+
+* Observe information.
+* Reason about a problem.
+* Use tools.
+* Store memory.
+* Make decisions.
+* Produce responses.
+
+Unlike a normal chatbot, an agent can execute multiple steps before answering.
+
+Example:
+
+```text
+Student asks a question
+          ↓
+Run code
+          ↓
+Analyze error
+          ↓
+Search documentation
+          ↓
+Check learner history
+          ↓
+Generate Socratic hint
+```
+
+---
+
+# 3. LangChain
+
+## Definition
+
+LangChain is an open-source framework for building applications powered by large language models.
+
+It provides reusable building blocks that help developers connect language models with external systems.
+
+---
+
+## Core Components of LangChain
+
+### 1. Models
+
+Provides a standard interface for interacting with language models.
+
+Example:
+
+```python
+response = llm.invoke(prompt)
+```
+
+---
+
+### 2. Prompt Templates
+
+Templates allow prompts to be generated dynamically.
+
+Example:
+
+```python
+template = """
+Explain this bug:
+
+{code}
+"""
+```
+
+---
+
+### 3. Chains
+
+A chain combines multiple operations.
+
+Example:
+
+```text
+Prompt
+   ↓
+LLM
+   ↓
+Parser
+```
+
+---
+
+### 4. Tools
+
+Tools allow the model to interact with external systems.
+
+Examples:
+
+* Python execution.
+* Search.
+* Calculators.
+* Database queries.
+
+---
+
+### 5. Memory
+
+Memory stores:
+
+* Conversation history.
+* User preferences.
+* Previous mistakes.
+
+---
+
+### 6. Agents
+
+Agents decide:
+
+* Which tools to use.
+* In what order.
+* How to combine results.
+
+---
+
+## Advantages of LangChain
+
+* Large ecosystem.
+* Easy integration with APIs.
+* Prompt templates.
+* Tool calling.
+* Memory support.
+* Large community.
+
+---
+
+## Disadvantages of LangChain
+
+* Many abstractions.
+* Can become difficult to debug.
+* Overkill for simple systems.
+* May hide implementation details.
+
+---
+
+## Use Cases
+
+LangChain is suitable for:
+
+* Chatbots.
+* Assistants.
+* Tool-using applications.
+* Prompt pipelines.
+
+---
+
+## Use in AI Coding Tutor
+
+LangChain can be useful, but the AI Coding Tutor requires more advanced state management.
+
+LangGraph is a better fit.
+
+---
+
+# 4. Why Was LangGraph Created?
+
+LangChain was originally designed around chains:
+
+```text
+Prompt → LLM → Tool → Output
+```
+
+As AI systems became more advanced, developers needed:
+
+* Loops.
+* Branching.
+* State persistence.
+* Human approval.
+* Long-running workflows.
+
+Implementing these features using only LangChain became difficult.
+
+LangGraph was created to solve these problems by introducing graph-based execution.
+
+Instead of linear chains, LangGraph treats applications as stateful workflows:
+
+```text
+State + Nodes + Edges = Agent Workflow
+```
+
+---
+
+# 5. LangGraph
+
+## Definition
+
+LangGraph is a framework built on top of LangChain for creating stateful, multi-step AI agents.
+
+Instead of chains, LangGraph represents workflows as graphs.
+
+---
+
+## Graph Structure
+
+A graph contains:
+
+* Nodes.
+* Edges.
+* State.
+* Conditional branches.
+
+---
+
+## Example Graph
+
+```text
+START
+   ↓
+Diagnose
+   ↓
+Pedagogize
+   ↓
+Respond
+   ↓
+END
+```
+
+---
+
+# Core Concepts of LangGraph
+
+## 1. Nodes
+
+Nodes represent individual tasks.
+
+Examples:
+
+* Diagnose error.
+* Retrieve documentation.
+* Generate hints.
+
+Example:
+
+```python
+def diagnose(state):
+    ...
+```
+
+---
+
+## 2. Edges
+
+Edges connect nodes.
+
+Example:
+
+```text
+Diagnose → Respond
+```
+
+---
+
+## 3. State
+
+State stores information shared across all nodes.
+
+Example:
+
+```python
+state = {
+    "student_id": "...",
+    "error_type": "...",
+    "learner_level": "beginner"
+}
+```
+
+Every node can:
+
+* Read the state.
+* Update the state.
+* Pass it to the next node.
+
+---
+
+## 4. Conditional Branches
+
+The graph can choose different paths.
+
+Example:
+
+```text
+Beginner student
+        ↓
+Detailed explanation
+
+Advanced student
+        ↓
+Minimal hint
+```
+
+---
+
+## 5. Persistence
+
+LangGraph can save state to disk.
+
+Example:
+
+```text
+Close application
+        ↓
+Restart application
+        ↓
+Previous state restored
+```
+
+---
+
+## 6. Human-in-the-Loop
+
+The graph can pause and wait for human approval.
+
+Example:
+
+```text
+Reveal full answer?
+        ↓
+Pause
+        ↓
+Teacher approval
+        ↓
+Continue
+```
+
+---
+
+## Advantages of LangGraph
+
+* Strong state management.
+* Multi-step reasoning.
+* Tool orchestration.
+* Built-in persistence.
+* Human checkpoints.
+* Better observability.
+
+---
+
+## Disadvantages of LangGraph
+
+* More complex.
+* More boilerplate code.
+* Higher learning curve.
+
+---
+
+## Use Cases
+
+LangGraph is suitable for:
+
+* Multi-step agents.
+* AI tutors.
+* Research assistants.
+* Tool-heavy systems.
+* Long-running workflows.
+
+---
+
+## Use in AI Coding Tutor
+
+LangGraph is the best choice because the tutor requires:
+
+* Memory.
+* State.
+* Tool orchestration.
+* Multi-step reasoning.
+* Human approval.
+
+---
+
+# 6. What Is State Management?
+
+State management is the core concept of LangGraph.
+
+State is the shared information that flows through the graph.
+
+Example:
+
+```python
+state = {
+    "student_code": "...",
+    "error_type": "IndexError",
+    "difficulty_level": "beginner",
+    "previous_mistakes": [
+        "for-loop",
+        "list indexing"
+    ]
+}
+```
+
+Every node:
+
+* Reads state.
+* Updates state.
+* Passes state to the next node.
+
+Without state management:
+
+```text
+Node A knows something.
+
+↓
+
+Node B forgets it.
+```
+
+With state management:
+
+```text
+Node A
+
+↓
+
+Shared State
+
+↓
+
+Node B
+
+↓
+
+Node C
+```
+
+For the AI Coding Tutor, state will store:
+
+* Previous mistakes.
+* Learner profile.
+* Skill level.
+* Conversation history.
+* Topics the learner struggles with.
+
+---
+
+# 7. LlamaIndex
+
+## Definition
+
+LlamaIndex is a framework designed specifically for Retrieval-Augmented Generation (RAG).
+
+Its main goal is to connect language models with documents.
+
+---
+
+## Retrieval Pipeline
+
+```text
+Documents
+     ↓
+Chunking
+     ↓
+Embeddings
+     ↓
+Vector Database
+     ↓
+Retrieval
+```
+
+---
+
+## Main Features
+
+* Document indexing.
+* Vector search.
+* Retrieval pipelines.
+* Integration with vector databases.
+
+---
+
+## Advantages
+
+* Excellent RAG support.
+* Many vector database integrations.
+* Powerful indexing systems.
+* Good retrieval abstractions.
+
+---
+
+## Disadvantages
+
+* Primarily retrieval-focused.
+* Less suitable for complex agents.
+* Less control over internal components.
+
+---
+
+## Use Cases
+
+LlamaIndex is suitable for:
+
+* Document search.
+* Knowledge assistants.
+* PDF question answering.
+* RAG systems.
+
+---
+
+## Use in AI Coding Tutor
+
+The project already implements:
+
+* `document_chunker.py`
+* `embedding_manager.py`
+* `chroma_manager.py`
+* `rag_search_tool.py`
+
+Therefore, LlamaIndex is unnecessary.
+
+---
+
+# 8. Haystack
+
+## Definition
+
+Haystack is an enterprise AI framework focused on search and production pipelines.
+
+---
+
+## Core Areas
+
+* Search.
+* Retrieval.
+* Pipelines.
+* Question answering.
+* Enterprise deployment.
+
+---
+
+## Advantages
+
+* Production-ready.
+* Strong search capabilities.
+* Pipeline visualization.
+* Enterprise features.
+
+---
+
+## Disadvantages
+
+* Heavy framework.
+* Complex setup.
+* More infrastructure requirements.
+
+---
+
+## Use Cases
+
+Haystack is suitable for:
+
+* Enterprise search.
+* Large-scale RAG systems.
+* Knowledge bases.
+
+---
+
+## Use in AI Coding Tutor
+
+Haystack is too large and unnecessary for this internship project.
+
+---
+
+# 9. Framework Comparison
+
+| Framework  | Primary Focus     | Best For                 | Use in AI Coding Tutor |
+| ---------- | ----------------- | ------------------------ | ---------------------- |
+| LangChain  | LLM applications  | Chatbots and tools       | Maybe                  |
+| LangGraph  | Stateful agents   | Multi-step workflows     | Yes                    |
+| LlamaIndex | Retrieval systems | Document search          | No                     |
+| Haystack   | Enterprise AI     | Large production systems | No                     |
+
+---
+
+# 10. When Should You Use a Framework?
+
+Use a framework when:
+
+* The application requires multiple steps.
+* State must persist.
+* Many tools are involved.
+* Human approval is required.
+* Teams will maintain the system.
+* Observability is important.
+
+---
+
+# 11. When Should You Build It Yourself?
+
+Build manually when:
+
+* The workflow has only one to three steps.
+* Maximum control is required.
+* Performance is critical.
+* The project is educational.
+* Framework abstractions hide too much.
+
+---
+
+# 12. Week 6 Architecture Preview
+
+Current tutor pipeline:
+
+```text
+Student Input
+       ↓
+Memory Manager
+       ↓
+RAG Search
+       ↓
+Prompt Builder
+       ↓
+LLM
+       ↓
+Tutor Response
+```
+
+Week 6 pipeline:
+
+```text
+Student Input
+       ↓
+Diagnose Node
+       ↓
+Pedagogize Node
+       ↓
+Respond Node
+       ↓
+Persistent Memory
+       ↓
+Human Checkpoint
+```
+
+Complete architecture:
+
+```text
+                ┌──────────────────┐
+                │ Student Input    │
+                └────────┬─────────┘
+                         │
+                         ▼
+
+                ┌──────────────────┐
+                │ Diagnose Node    │
+                │                  │
+                │ Run code         │
+                │ Detect bug       │
+                └────────┬─────────┘
+                         │
+                         ▼
+
+                ┌──────────────────┐
+                │ Pedagogize Node  │
+                │                  │
+                │ Check learner    │
+                │ history          │
+                └────────┬─────────┘
+                         │
+                         ▼
+
+                ┌──────────────────┐
+                │ Respond Node     │
+                │                  │
+                │ Generate hint    │
+                └────────┬─────────┘
+                         │
+                         ▼
+
+                ┌──────────────────┐
+                │ Persist State    │
+                └────────┬─────────┘
+                         │
+                         ▼
+
+                ┌──────────────────┐
+                │ Human Checkpoint │
+                └──────────────────┘
+```
+
+---
+
+# 13. Applying This to the AI Coding Tutor
+
+Current tutor pipeline:
+
+```text
+Student Input
+       ↓
+Memory Manager
+       ↓
+RAG Search
+       ↓
+Prompt Builder
+       ↓
+LLM
+       ↓
+Tutor Response
+```
+
+Future tutor pipeline:
+
+```text
+Student Input
+       ↓
+Diagnose Node
+       ↓
+Pedagogize Node
+       ↓
+Respond Node
+       ↓
+Persistent Memory
+       ↓
+Human Checkpoint
+```
+
+The tutor needs:
+
+* Memory.
+* State management.
+* Tool orchestration.
+* Multi-step reasoning.
+* Human approval.
+
+LangGraph satisfies all these requirements.
+
+---
+
+# 14. Final Conclusion
+
+For the AI Coding Tutor project:
+
+* LangChain is useful but not ideal.
+* LangGraph is the best framework.
+* LlamaIndex is unnecessary because retrieval is already implemented.
+* Haystack is too large for the project.
+
+LangGraph should be chosen because it provides:
+
+* Stateful execution.
+* Multi-step workflows.
+* Persistent memory.
+* Tool orchestration.
+* Human-in-the-loop support.
+* Production-grade architecture.
+
+---
+
+# Deliverable for Day 1
+
+Create the following folder structure:
+
+```text
+week6-agent-frameworks/
+    day1-framework-tour/
+        framework_notes.txt
+```
+
+The document should contain:
+
+1. Introduction to agent frameworks.
+2. LangChain.
+3. LangGraph.
+4. LlamaIndex.
+5. Haystack.
+6. Comparison table.
+7. Framework vs hand-written code.
+8. State management.
+9. Why LangGraph was created.
+10. Week 6 architecture preview.
+11. Why LangGraph is best for the AI Coding Tutor.
+12. Final conclusion.
