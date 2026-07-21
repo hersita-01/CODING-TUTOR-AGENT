@@ -1,6 +1,6 @@
 # AI Coding Tutor Agent
 
-An AI-powered Python Coding Tutor that helps beginner programmers learn through guided debugging, Socratic questioning, safe code execution, and AI-assisted feedback.
+An AI-powered Python Coding Tutor that helps beginner programmers learn through guided debugging, Socratic questioning, safe code execution, memory-aware reasoning, and AI-assisted feedback.
 
 Instead of directly providing answers, the tutor encourages students to analyze errors, understand programming concepts, and discover solutions independently.
 
@@ -8,13 +8,15 @@ Instead of directly providing answers, the tutor encourages students to analyze 
 
 # Project Overview
 
-The AI Coding Tutor Agent was developed as a four-week learning project that progressively explores:
+The AI Coding Tutor Agent was developed as a six-week learning project that progressively explores:
 
 * Python fundamentals
 * Prompt engineering
 * AI tool integration
 * Safe code execution
-* AI agent design
+* Memory systems
+* Retrieval-Augmented Generation (RAG)
+* Agent frameworks
 * Educational software development
 
 Each week builds upon the previous one, culminating in a fully functional AI-powered tutoring application.
@@ -25,11 +27,14 @@ Each week builds upon the previous one, culminating in a fully functional AI-pow
 
 The primary goals of this project are to:
 
-* Help beginners understand Python errors and debugging techniques
-* Provide guided, Socratic-style tutoring instead of direct answers
-* Execute and analyze student code safely
-* Use AI tools to generate context-aware educational feedback
-* Explore modern AI application development practices
+* Help beginners understand Python errors and debugging techniques.
+* Provide guided, Socratic-style tutoring instead of direct answers.
+* Execute and analyze student code safely.
+* Use AI tools to generate context-aware educational feedback.
+* Build memory-aware tutoring systems.
+* Explore Retrieval-Augmented Generation (RAG).
+* Understand modern AI agent frameworks.
+* Explore production-oriented AI application development practices.
 
 ---
 
@@ -40,7 +45,11 @@ The primary goals of this project are to:
 | Programming Language   | Python                     |
 | AI Provider            | Groq API                   |
 | AI SDK                 | OpenAI Python SDK          |
+| Agent Framework        | LangGraph                  |
+| LLM Framework          | LangChain                  |
 | Frontend               | Streamlit                  |
+| Embedding Model        | SentenceTransformers       |
+| Vector Database        | ChromaDB                   |
 | Code Validation        | AST (Abstract Syntax Tree) |
 | Safe Execution         | subprocess                 |
 | Environment Management | python-dotenv              |
@@ -48,98 +57,34 @@ The primary goals of this project are to:
 | Version Control        | Git & GitHub               |
 
 ---
+
+# Project Structure
+
+```text
 CODING-TUTOR-AGENT/
 │
-├── .vscode/
-│
 ├── week1-foundations/
-│   │
 │   ├── day2-python-basics/
-│   │   ├── 2ndlargestno.py
-│   │   ├── basics.py
-│   │   ├── celsius to fahrenheit.py
-│   │   ├── char count in sentence.py
-│   │   ├── digit sum.py
-│   │   ├── frequency of chars.py
-│   │   ├── nested tup-roll,name,marks.py
-│   │   ├── number of wds in sent.py
-│   │   ├── replacevowel.py
-│   │   └── student.py
-│   │
 │   ├── day3-functions-debugging/
-│   │   ├── author menu driven final.py
-│   │   ├── dollar conv.py
-│   │   ├── functions.py
-│   │   ├── notes.txt
-│   │   ├── random 3 nos.py
-│   │   ├── series menu driven final.py
-│   │   └── twin primes final.py
-│   │
 │   ├── day4-llm-api/
-│   │   ├── .gitignore
-│   │   ├── first_llm.py
-│   │   ├── groq_test.py
-│   │   ├── temperature_test.py
-│   │   └── tokens_test.py
-│   │
 │   ├── day5-prompt-engineering/
-│   │   ├── notes.txt
-│   │   └── tutor_prompt.py
-│   │
 │   └── week1_README.md
 │
 ├── week2-prompt-engineering/
-│   │
 │   ├── day1-bug-explainer/
-│   │   ├── bug_explainer.py
-│   │   └── notes.md
-│   │
 │   ├── day2-few-shot/
-│   │   ├── few_shot_bug_explainer.py
-│   │   └── notes.md
-│   │
 │   ├── day3-socratic/
-│   │   ├── .gitignore
-│   │   ├── chain_of_thought_tutor.py
-│   │   ├── friendly_tutor.py
-│   │   ├── safe_python_runner.py
-│   │   ├── socratic_hint_generator.py
-│   │   ├── strict_socratic_mode.py
-│   │   └── __pycache__/
-│   │
 │   ├── day4-structured-output/
-│   │   ├── structured_tutor_response.py
-│   │   └── notes.md
-│   │
 │   ├── day5-streaming-cost/
-│   │   ├── streaming_tutor.py
-│   │   └── notes.md
-│   │
 │   ├── prompt_library.md
 │   └── README.md
 │
 ├── week3-tool-use/
-│   │
 │   ├── day1_tool_concepts.py
-│   │
 │   ├── day2-tool-schemas/
-│   │   └── tool_schemas.py
-│   │
 │   ├── day3-tool-loop/
-│   │   ├── tool_dispatcher.py
-│   │   ├── tool_schemas.py
-│   │   ├── tutor_agent.py
-│   │   └── __pycache__/
-│   │
 │   ├── day4-more-tools/
-│   │   ├── doc_search_tool.py
-│   │   └── lint_tool.py
-│   │
 │   ├── day5-error-handling/
-│   │   ├── robust_tool_loop.py
-│   │   ├── test_failure_modes.py
-│   │   └── __pycache__/
-│   │
 │   └── README.md
 │
 ├── week4_mini_tutor/
@@ -147,26 +92,43 @@ CODING-TUTOR-AGENT/
 │   ├── prompts.py
 │   ├── week4_app.py
 │   ├── week4_mini_tutor.py
-│   ├── week4_README.md
-│   └── __pycache__/
+│   └── week4_README.md
+│
+├── week5-memory/
+│   ├── day1-memory-manager/
+│   ├── day2-embeddings/
+│   ├── day3-vector-store/
+│   ├── day4-chunking-strategies/
+│   ├── day5-rag-pipeline/
+│   └── README.md
+│
+├── week6-agent-frameworks/
+│   ├── day1-framework-tour/
+│   ├── day2-langgraph-basics/
+│   ├── day3-tutoring-graph/
+│   ├── day4-state-persistence/
+│   ├── day5-human-loop/
+│   └── README.md
 │
 ├── .env
 ├── .gitignore
 └── README.md
+```
+
 ---
 
 # Week 1 – Foundations
 
-Focus: Learning Python fundamentals and understanding how Large Language Models can be integrated into applications.
+Focus: Learning Python fundamentals and understanding how large language models can be integrated into applications.
 
 Implemented:
 
-* Python programming exercises
-* Functions and debugging practice
-* API integration using Groq
-* Temperature and token experiments
-* Initial prompt engineering concepts
-* Basic AI tutor prototypes
+* Python programming exercises.
+* Functions and debugging practice.
+* API integration using Groq.
+* Temperature and token experiments.
+* Initial prompt engineering concepts.
+* Basic AI tutor prototypes.
 
 Key Learning:
 
@@ -180,14 +142,14 @@ Focus: Improving tutoring quality through prompt design.
 
 Implemented:
 
-* Bug explanation assistants
-* Few-shot prompting examples
-* Socratic tutoring workflows
-* Chain-of-thought reasoning experiments
-* Structured tutor responses
-* Streaming AI responses
-* Safe Python execution using AST-based validation
-* Enhanced traceback parsing and execution result handling
+* Bug explanation assistants.
+* Few-shot prompting examples.
+* Socratic tutoring workflows.
+* Chain-of-thought reasoning experiments.
+* Structured tutor responses.
+* Streaming AI responses.
+* Safe Python execution using AST-based validation.
+* Enhanced traceback parsing and execution result handling.
 
 Key Learning:
 
@@ -201,13 +163,13 @@ Focus: Building AI systems that use tools instead of relying only on model reaso
 
 Implemented:
 
-* Tool schemas and tool-calling workflows
-* Code execution tools
-* Validation and analysis pipelines
-* Runtime error analysis
-* Multi-step tool execution loops
-* Safe execution workflows
-* Tool-based tutoring agents
+* Tool schemas and tool-calling workflows.
+* Code execution tools.
+* Validation and analysis pipelines.
+* Runtime error analysis.
+* Multi-step tool execution loops.
+* Safe execution workflows.
+* Tool-based tutoring agents.
 
 Key Learning:
 
@@ -221,16 +183,16 @@ Focus: Integrating all previous concepts into a complete AI-powered tutoring app
 
 Implemented:
 
-* Command Line Interface (CLI)
-* Streamlit-based web application
-* Safe code execution pipeline
-* AST-based security validation
-* Timeout protection
-* Memory protection
-* Structured traceback analysis
-* AI-generated Socratic debugging guidance
-* Modular configuration and prompt management
-* Improved project organization and maintainability
+* Command Line Interface (CLI).
+* Streamlit-based web application.
+* Safe code execution pipeline.
+* AST-based security validation.
+* Timeout protection.
+* Memory protection.
+* Structured traceback analysis.
+* AI-generated Socratic debugging guidance.
+* Modular configuration and prompt management.
+* Improved project organization and maintainability.
 
 Key Learning:
 
@@ -238,37 +200,91 @@ Combining prompt engineering, tool use, and secure execution creates a practical
 
 ---
 
+# Week 5 – Memory and Retrieval
+
+Focus: Equipping the tutor with memory and retrieval capabilities so that it can remember past interactions, retrieve relevant knowledge, and provide context-aware assistance.
+
+Implemented:
+
+* Conversation memory management.
+* Learner profile storage.
+* Embedding generation using SentenceTransformers.
+* Document chunking strategies.
+* ChromaDB vector storage.
+* Semantic document retrieval.
+* Metadata enrichment and filtering.
+* Chunking strategy evaluation framework.
+* Retrieval-Augmented Generation (RAG) pipeline.
+* Citation-aware document search.
+
+Key Learning:
+
+Large language models become significantly more useful when they can retrieve relevant information from external knowledge sources and remember previous interactions. Retrieval systems and memory management enable personalized and context-aware tutoring experiences.
+
+---
+
+# Week 6 – Agent Frameworks
+
+Focus: Moving beyond hand-written execution loops and rebuilding the AI tutor using production-grade agent frameworks.
+
+Implemented:
+
+* Study of modern AI frameworks.
+* Comparison of LangChain, LangGraph, LlamaIndex, and Haystack.
+* Graph-based workflow design.
+* Stateful multi-step tutoring pipelines.
+* Node and edge orchestration.
+* Shared state management.
+* Conditional routing logic.
+* Persistent learner profiles.
+* Human-in-the-loop checkpoints.
+* Production-oriented agent architecture.
+
+Key Learning:
+
+As AI systems become more complex, manually managing workflows becomes increasingly difficult. Agent frameworks such as LangGraph provide structured state management, tool orchestration, persistence, and human oversight, making them suitable for building production-grade AI applications.
+
+---
+
 # Core Features
 
-* Socratic tutoring approach
-* Safe Python code execution
-* Runtime error detection
-* Structured traceback analysis
-* AST-based security validation
-* Timeout and memory protection
-* AI-assisted debugging guidance
-* Command Line Interface (CLI)
-* Streamlit Web Interface
-* Modular and maintainable architecture
+* Socratic tutoring approach.
+* Safe Python code execution.
+* Runtime error detection.
+* Structured traceback analysis.
+* AST-based security validation.
+* Timeout and memory protection.
+* AI-assisted debugging guidance.
+* Conversation memory.
+* Learner profile management.
+* Semantic document retrieval.
+* Retrieval-Augmented Generation (RAG).
+* Vector database integration.
+* Tool-calling workflows.
+* Stateful agent execution.
+* Human-in-the-loop checkpoints.
+* Command Line Interface (CLI).
+* Streamlit Web Interface.
+* Modular and maintainable architecture.
 
 ---
 
 # Example Workflow
 
-Student Code
+Student Code:
 
 ```python
 numbers = [1, 2, 3]
 print(numbers[10])
 ```
 
-Runtime Error
+Runtime Error:
 
 ```text
 IndexError: list index out of range
 ```
 
-Tutor Response
+Tutor Response:
 
 ```text
 Diagnosis:
@@ -298,7 +314,7 @@ Create a virtual environment:
 python -m venv tutor-env
 ```
 
-Activate the environment:
+Activate the environment.
 
 Windows:
 
@@ -315,7 +331,7 @@ source tutor-env/bin/activate
 Install dependencies:
 
 ```bash
-pip install openai streamlit python-dotenv ruff
+pip install openai streamlit python-dotenv ruff sentence-transformers chromadb langchain langgraph
 ```
 
 Create a `.env` file:
@@ -338,14 +354,38 @@ Streamlit:
 streamlit run week4_mini_tutor/week4_app.py
 ```
 
+---
+
+# Learning Outcomes
+
+Through this project, the following concepts were explored:
+
+* Python programming fundamentals.
+* Prompt engineering.
+* Socratic tutoring design.
+* Safe code execution.
+* Tool calling and tool orchestration.
+* Retrieval-Augmented Generation (RAG).
+* Memory systems.
+* Vector databases.
+* Agent frameworks.
+* Stateful workflows.
+* Human-in-the-loop systems.
+* Educational AI design.
+* Full-stack AI application development.
+
+---
 
 # Author
 
-Developed as part of an AI Engineering learning journey focused on:
+Developed as part of an AI engineering learning journey focused on:
 
 * Prompt Engineering
 * AI Agents
 * Tool Calling
 * Safe Code Execution
+* Memory Systems
+* Retrieval-Augmented Generation
+* Agent Frameworks
 * Educational AI Systems
 * Full-Stack AI Application Development

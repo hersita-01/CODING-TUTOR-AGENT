@@ -1,0 +1,36 @@
+{
+  "learner_name": "student_001",
+  "concepts_mastered": [],
+  "concepts_struggling": [],
+  "recent_errors": [
+    {
+      "error_type": "IndexError",
+      "error_message": "list index out of range",
+      "topic": "",
+      "recorded_at": "2026-07-11T14:25:35.696814+00:00"
+    },
+    {
+      "error_type": "IndexError",
+      "error_message": "list index out of range",
+      "topic": "",
+      "recorded_at": "2026-07-11T14:28:56.015538+00:00"
+    },
+    {
+      "error_type": "IndexError",
+      "error_message": "list index out of range",
+      "topic": "",
+      "recorded_at": "2026-07-11T14:38:20.725997+00:00"
+    },
+    {
+      "error_type": "IndexError",
+      "error_message": "list index out of range",
+      "topic": "",
+      "recorded_at": "2026-07-11T14:38:23.708324+00:00"
+    }
+  ],
+  "recent_topics": [],
+  "session_history": [],
+  "learning_progress": {},
+  "created_at": "2026-07-11T14:25:35.696814+00:00",
+  "updated_at": "2026-07-11T14:38:23.708324+00:00"
+}
