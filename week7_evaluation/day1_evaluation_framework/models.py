@@ -5,20 +5,23 @@ from typing import Any, Dict, List, Optional
 class EvaluationTestCase:
     """
     Represents a single test scenario for the AI Tutor.
-    Day 2 will focus on populating a dataset of these test cases.
+    Expanded in Day 2 to include robust evaluation criteria.
     """
     id: str
+    title: str
     student_code: str
-    learner_level: str
-    expected_error_type: Optional[str] = None
-    expected_hint_style: Optional[str] = None
+    learning_concept: str
+    expected_error_category: str
+    difficulty_level: str
+    expected_tutor_behaviour: str
+    expected_socratic_objective: str
+    expected_hint_level: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
 class EvaluationMetric:
     """
-    Represents a single metric score returned by an evaluator (e.g. LLM Judge).
-    Day 4 will define the standard metrics (e.g. Socratic adherence, safety).
+    Represents a single metric score returned by an evaluator.
     """
     name: str
     score: float  # Normalized between 0.0 and 1.0
@@ -29,7 +32,6 @@ class EvaluationMetric:
 class EvaluationResult:
     """
     Represents the aggregate result of running an evaluator on a test case.
-    Day 5 will use these results to generate final reports.
     """
     test_case_id: str
     evaluator_name: str

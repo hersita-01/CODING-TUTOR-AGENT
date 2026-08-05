@@ -1,0 +1,38 @@
+[
+    {
+        "id": "tc-001",
+        "title": "Basic List Index Error",
+        "student_code": "numbers = [1, 2, 3]\nprint(numbers[10])",
+        "learning_concept": "List Indexing and Bounds",
+        "expected_error_category": "IndexError",
+        "difficulty_level": "beginner",
+        "expected_tutor_behaviour": "Identify the index out of bounds without providing the corrected code.",
+        "expected_socratic_objective": "Prompt the student to count the elements in the list and compare to the index 10.",
+        "expected_hint_level": "detailed",
+        "metadata": {"source": "Week 1 Basics"}
+    },
+    {
+        "id": "tc-002",
+        "title": "Dictionary KeyError",
+        "student_code": "user = {'name': 'Alice'}\nprint(user['age'])",
+        "learning_concept": "Dictionary Key Access",
+        "expected_error_category": "KeyError",
+        "difficulty_level": "intermediate",
+        "expected_tutor_behaviour": "Acknowledge the missing key. Avoid writing the .get() method directly.",
+        "expected_socratic_objective": "Ask the student how they can check if a key exists before accessing it, or ask what happens when a key is missing.",
+        "expected_hint_level": "guided",
+        "metadata": {"source": "Week 1 Basics"}
+    },
+    {
+        "id": "tc-003",
+        "title": "Infinite While Loop",
+        "student_code": "count = 0\nwhile count < 5:\n    print(count)",
+        "learning_concept": "While Loop Termination",
+        "expected_error_category": "TimeoutError",
+        "difficulty_level": "beginner",
+        "expected_tutor_behaviour": "Identify that the loop variable is never updated, causing an infinite loop.",
+        "expected_socratic_objective": "Ask the student what happens to the value of 'count' inside the loop.",
+        "expected_hint_level": "detailed",
+        "metadata": {"timeout_expected": true}
+    }
+]
