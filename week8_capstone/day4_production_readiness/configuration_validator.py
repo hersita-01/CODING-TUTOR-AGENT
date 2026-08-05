@@ -1,0 +1,2 @@
+class ConfigurationValidator:
+    pass

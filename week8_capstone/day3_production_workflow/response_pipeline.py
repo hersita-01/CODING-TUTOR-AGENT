@@ -1,0 +1,2 @@
+class ResponsePipeline:
+    pass

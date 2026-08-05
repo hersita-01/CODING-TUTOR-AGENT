@@ -1,0 +1,2 @@
+class StartupValidator:
+    pass

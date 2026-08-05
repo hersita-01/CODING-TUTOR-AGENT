@@ -1,0 +1,2 @@
+class IntegrationConfig:
+    pass
