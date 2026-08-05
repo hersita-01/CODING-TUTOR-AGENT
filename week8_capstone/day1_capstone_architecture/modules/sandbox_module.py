@@ -1,0 +1,2 @@
+class SandboxAdapter:
+    pass

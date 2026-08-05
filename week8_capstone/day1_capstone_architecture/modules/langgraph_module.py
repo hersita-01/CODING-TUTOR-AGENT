@@ -1,0 +1,2 @@
+class LangGraphAdapter:
+    pass
