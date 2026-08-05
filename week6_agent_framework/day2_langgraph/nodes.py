@@ -20,10 +20,11 @@
 
 from __future__ import annotations
 
-import sys
+import os
 from pathlib import Path
 
 from state import TutorState
+from openai import OpenAI
 
 # ============================================================
 # WIRE UP IMPORTS FROM EXISTING WEEKS
@@ -49,6 +50,10 @@ sys.path.append(
 
 sys.path.append(
     str(_PROJECT_ROOT / "week5_memory" / "day1-learner-memory")
+)
+
+sys.path.append(
+    str(_PROJECT_ROOT / "week5_memory" / "day5_rag")
 )
 
 # ── Week 2: safe execution sandbox ──────────────────────────────────────────
@@ -83,6 +88,13 @@ _memory_manager = (
     MemoryManager() if _WEEK5_AVAILABLE else None
 )
 
+# ── Week 5: RAG Context ─────────────────────────────────────────────────────
+try:
+    from rag_context_builder import build_rag_context
+    _RAG_AVAILABLE = True
+except ImportError:
+    _RAG_AVAILABLE = False
+
 
 # ============================================================
 # NODE 1 — diagnose_node
@@ -115,6 +127,8 @@ def diagnose_node(state: TutorState) -> dict[str, object]:
     # parsing all happen inside safe_run() (a.k.a. run_python_safely()).
     result = safe_run(student_code, timeout_s=TIMEOUT_SECONDS)
 
+    diagnosis = "Code executed successfully." if result.ok else f"Execution failed with {result.error_type}."
+
     return {
         "run_result": result,
         "execution_success": result.ok,
@@ -122,6 +136,7 @@ def diagnose_node(state: TutorState) -> dict[str, object]:
         # normalise those to None so downstream checks can use `is None`.
         "error_type": result.error_type or None,
         "traceback": result.traceback or None,
+        "diagnosis": diagnosis,
     }
 
 
@@ -180,9 +195,17 @@ def pedagogize_node(state: TutorState) -> dict[str, object]:
             "note": "Week 5 MemoryManager unavailable — no history loaded.",
         }
 
+    if _RAG_AVAILABLE:
+        # Use the traceback or student message to query the RAG pipeline
+        search_query = state.get("traceback") or state.get("student_code", "")
+        retrieved_context = build_rag_context(search_query, top_k=3)
+    else:
+        retrieved_context = "## Relevant Documentation\nRAG pipeline unavailable."
+
     return {
         "hint_level": hint_level,
         "learner_profile": learner_profile,
+        "retrieved_context": retrieved_context,
     }
 
 
@@ -204,50 +227,55 @@ def respond_node(state: TutorState) -> dict[str, object]:
     execution_success = state["execution_success"]
     error_type = state["error_type"]
     traceback_text = state["traceback"]
+    student_code = state["student_code"]
+    diagnosis = state.get("diagnosis", "")
+    retrieved_context = state.get("retrieved_context", "")
 
-    if execution_success:
-        response = (
-            "Diagnosis: Your code ran without errors.\n"
-            "Question: What output did you expect to see, and does it match "
-            "what actually printed?\n"
-            "Next Step: Try a slightly different input and predict the output "
-            "before running it."
-        )
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        # Fallback if no LLM configured
+        return {
+            "response": f"Diagnosis: {diagnosis}\nError: GROQ_API_KEY missing. Cannot generate Socratic hint.",
+            "socratic_hint": None
+        }
+        
+    client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
+    
+    # Reuse Week 2 Prompts (Bug Explainer + Socratic Hint Generator)
+    system_prompt = (
+        "You are a patient Python tutor for beginners. Explain errors in plain English, "
+        "avoid jargon, and never give the full corrected code first.\n"
+        "You are a Socratic Python tutor. Your job is to ask a question that nudges "
+        "the learner toward the bug without revealing the fix.\n"
+        "Keep explanations short and ask exactly ONE guiding Socratic question."
+    )
+
+    user_prompt = f"Student Code:\n{student_code}\n\n"
+    if not execution_success:
+        user_prompt += f"Error:\n{error_type}\nTraceback:\n{traceback_text}\n\n"
     else:
-        # Pull the last traceback line for a beginner-friendly line reference,
-        # without ever handing over the corrected code (Week 4 tutor rule #3).
-        last_line = (traceback_text or "").strip().splitlines()[-1] if traceback_text else ""
+        user_prompt += "The code executed successfully, but the student may have logic issues.\n\n"
+        
+    user_prompt += f"Diagnosis: {diagnosis}\n"
+    user_prompt += f"Hint Level required: {hint_level}\n\n"
+    user_prompt += f"{retrieved_context}\n\n"
+    user_prompt += "Explain briefly and ask one Socratic debugging question."
 
-        if hint_level == "detailed":
-            article = "an" if error_type and error_type[0].lower() in "aeiou" else "a"
-
-            question = (
-                f"Diagnosis: Your code raised {article} {error_type}. "
-                f"Looking at the last line of the traceback ({last_line!r}), "
-                "what value do you think the program was working with right "
-                "before it failed?\n"
-                "Question: Can you print() that value just before the failing "
-                "line to see what it actually is?\n"
-                "Next Step: Add one print() statement above the failing line "
-                "and re-run."
-            )
-
-        elif hint_level == "guided":
-            question = (
-                f"Diagnosis: A {error_type} occurred during execution.\n"
-                "Question: Which line do you think is responsible, and what "
-                "assumption does that line make about its input?\n"
-                "Next Step: Re-read that line and check whether the assumption "
-                "always holds."
-            )
-        else:  # "minimal"
-            question = (
-                f"Diagnosis: {error_type} raised.\n"
-                "Question: What invariant does this error type usually signal "
-                "is being violated?\n"
-                "Next Step: Isolate the failing expression and test it alone."
-            )
-
-        response = question
-
-    return {"response": response}
+    try:
+        llm_response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.2,
+            max_tokens=256
+        )
+        response_text = llm_response.choices[0].message.content or "No response generated."
+    except Exception as e:
+        response_text = f"Diagnosis: {diagnosis}\nSystem Error: LLM call failed ({e})."
+        
+    return {
+        "response": response_text,
+        "socratic_hint": response_text,
+    }

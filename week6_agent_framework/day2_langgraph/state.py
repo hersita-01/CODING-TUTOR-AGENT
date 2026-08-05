@@ -78,6 +78,13 @@ class TutorState(TypedDict):
     error_type: str | None
     traceback: str | None
 
+    # Added for Day 3 Requirements
+    diagnosis: str | None
+    socratic_hint: str | None
+    conversation_history: list[dict[str, str]]
+    retrieved_context: str | None
+    metadata: dict[str, Any]
+
     hint_level: Literal[
         "detailed",
         "guided",
